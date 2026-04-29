@@ -1,3 +1,5 @@
+그리고 src/app/auth/callback/route.ts 파일도 아래 코드로 교체해줘:
+
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -6,7 +8,6 @@ import type { NextRequest } from 'next/server'
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
-  const next = requestUrl.searchParams.get('next') ?? '/onboarding'
 
   if (code) {
     const cookieStore = await cookies()
