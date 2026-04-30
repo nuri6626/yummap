@@ -2,242 +2,186 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
-const CUISINE_LIST = [
-  { id: 'korean', label: '🍚 한식', },
-  { id: 'chinese', label: '🥟 중식', },
-  { id: 'japanese', label: '🍱 일식', },
-  { id: 'western', label: '🍝 양식', },
-  { id: 'snack', label: '🍢 분식', },
-  { id: 'seafood', label: '🦞 해산물', },
-  { id: 'meat', label: '🥩 고기', },
-  { id: 'cafe', label: '☕ 카페', },
-  { id: 'dessert', label: '🍰 디저트', },
-  { id: 'fastfood', label: '🍔 패스트푸드', },
+const CUISINES = [
+  '한식', '중식', '일식', '양식', '분식',
+  '해산물', '고기', '카페', '디저트', '패스트푸드'
 ]
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [step, setStep] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [nickname, setNickname] = useState('')
   const [spiceLevel, setSpiceLevel] = useState(5)
   const [pickiness, setPickiness] = useState(5)
   const [stylePref, setStylePref] = useState(5)
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([])
-  const [nickname, setNickname] = useState('')
 
-  const toggleCuisine = (id: string) => {
+  const toggleCuisine = (cuisine: string) => {
     setSelectedCuisines(prev =>
-      prev.includes(id)
-        ? prev.filter(c => c !== id)
-        : [...prev, id]
+      prev.includes(cuisine)
+        ? prev.filter(c => c !== cuisine)
+        : [...prev, cuisine]
     )
   }
 
-  const handleComplete = () => {
-    // 나중에 Supabase 저장 연결
-    router.push('/')
+  const handleComplete = async () => {
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      const { error } = await supabase
+        .from('user_taste_profile')
+        .upsert({
+          user_id: user.id,
+          nickname: nickname,
+          spice_level: spiceLevel,
+          pickiness: pickiness,
+          style_pref: stylePref,
+          preferred_cuisines: selectedCuisines,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (error) {
+        console.error('저장 오류:', error)
+        alert('저장 중 오류가 발생했습니다. 다시 시도해주세요.')
+        setLoading(false)
+        return
+      }
+
+      router.push('/map')
+    } catch (err) {
+      console.error(err)
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-orange-50 flex flex-col">
-
-      {/* 헤더 */}
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <h1 className="text-xl font-bold text-orange-500">🍜 얌맵</h1>
-        <span className="text-gray-400 text-sm">입맛 프로필 설정</span>
-      </div>
-
+    <div className="min-h-screen bg-amber-50 flex flex-col items-center justify-center p-4">
       {/* 진행 바 */}
-      <div className="bg-white px-4 pb-3">
-        <div className="flex gap-1 mt-2">
+      <div className="w-full max-w-md mb-8">
+        <div className="flex justify-between mb-2">
           {[1, 2, 3].map(i => (
             <div
               key={i}
-              className={`h-1 flex-1 rounded-full transition-all ${
-                i <= step ? 'bg-orange-400' : 'bg-gray-200'
-              }`}
-            />
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+                ${step >= i ? 'bg-amber-400 text-white' : 'bg-gray-200 text-gray-400'}`}
+            >
+              {i}
+            </div>
           ))}
         </div>
-        <p className="text-xs text-gray-400 mt-1">{step} / 3 단계</p>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-amber-400 h-2 rounded-full transition-all"
+            style={{ width: `${((step - 1) / 2) * 100}%` }}
+          />
+        </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
 
-        {/* Step 1 — 닉네임 */}
+        {/* STEP 1: 닉네임 */}
         {step === 1 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              반갑습니다! 👋
-            </h2>
-            <p className="text-gray-500 mb-8">
-              얌맵에서 사용할 닉네임을 입력해주세요
-            </p>
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                닉네임
-              </label>
-              <input
-                type="text"
-                value={nickname}
-                onChange={e => setNickname(e.target.value)}
-                placeholder="예: 맛집탐험가"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:border-orange-400"
-                maxLength={20}
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                {nickname.length}/20
-              </p>
-            </div>
-
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">닉네임을 입력해주세요</h2>
+            <p className="text-gray-500 mb-6">얌맵에서 사용할 이름이에요</p>
+            <input
+              type="text"
+              value={nickname}
+              onChange={e => setNickname(e.target.value)}
+              placeholder="닉네임 입력 (2~20자)"
+              maxLength={20}
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:border-amber-400 focus:outline-none"
+            />
+            <p className="text-right text-sm text-gray-400 mt-1">{nickname.length}/20</p>
             <button
               onClick={() => setStep(2)}
               disabled={nickname.length < 2}
-              className="w-full mt-6 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-4 rounded-2xl transition-all"
+              className="w-full mt-6 bg-amber-400 text-white py-3 rounded-xl font-bold text-lg disabled:opacity-40"
             >
               다음
             </button>
           </div>
         )}
 
-        {/* Step 2 — 입맛 설정 */}
+        {/* STEP 2: 입맛 슬라이더 */}
         {step === 2 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              내 입맛을 알려주세요 🌶️
-            </h2>
-            <p className="text-gray-500 mb-6">
-              슬라이더로 내 입맛을 설정하면<br />
-              딱 맞는 맛집을 추천해드려요
-            </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">내 입맛을 알려주세요</h2>
+            <p className="text-gray-500 mb-6">맞춤 맛집 추천에 활용됩니다</p>
 
-            <div className="space-y-6">
-
-              {/* 자극도 */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-bold text-gray-800">자극도</span>
-                  <span className="text-orange-500 font-bold">{spiceLevel}/10</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2">
-                  <span>😌 순한맛</span>
-                  <span>🔥 강한맛</span>
+            {[
+              { label: '🌶️ 자극도', value: spiceLevel, setter: setSpiceLevel, left: '순한맛', right: '매운맛' },
+              { label: '🧐 입맛 기준', value: pickiness, setter: setPickiness, left: '아무거나', right: '까다로운' },
+              { label: '🍽️ 음식 스타일', value: stylePref, setter: setStylePref, left: '전통적', right: '트렌디' },
+            ].map(({ label, value, setter, left, right }) => (
+              <div key={label} className="mb-6">
+                <div className="flex justify-between mb-2">
+                  <span className="font-semibold text-gray-700">{label}</span>
+                  <span className="font-bold text-amber-500">{value}/10</span>
                 </div>
                 <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={spiceLevel}
-                  onChange={e => setSpiceLevel(Number(e.target.value))}
-                  className="w-full accent-orange-500"
+                  type="range" min={0} max={10} value={value}
+                  onChange={e => setter(Number(e.target.value))}
+                  className="w-full accent-amber-400"
                 />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>{left}</span>
+                  <span>{right}</span>
+                </div>
               </div>
+            ))}
 
-              {/* 기준 엄격도 */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-bold text-gray-800">입맛 기준</span>
-                  <span className="text-orange-500 font-bold">{pickiness}/10</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2">
-                  <span>😊 관대한 입</span>
-                  <span>🧐 까다로운 입</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={pickiness}
-                  onChange={e => setPickiness(Number(e.target.value))}
-                  className="w-full accent-orange-500"
-                />
-              </div>
-
-              {/* 스타일 */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-bold text-gray-800">음식 스타일</span>
-                  <span className="text-orange-500 font-bold">{stylePref}/10</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-2">
-                  <span>🏠 전통/담백</span>
-                  <span>✨ 트렌디/퓨전</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={stylePref}
-                  onChange={e => setStylePref(Number(e.target.value))}
-                  className="w-full accent-orange-500"
-                />
-              </div>
-
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl"
-              >
-                이전
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className="flex-2 w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-2xl transition-all"
-              >
-                다음
-              </button>
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setStep(1)} className="flex-1 border-2 border-gray-200 text-gray-600 py-3 rounded-xl font-bold">이전</button>
+              <button onClick={() => setStep(3)} className="flex-1 bg-amber-400 text-white py-3 rounded-xl font-bold">다음</button>
             </div>
           </div>
         )}
 
-        {/* Step 3 — 선호 음식 */}
+        {/* STEP 3: 음식 선택 */}
         {step === 3 && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              좋아하는 음식은? 🍽️
-            </h2>
-            <p className="text-gray-500 mb-6">
-              선호하는 음식 종류를 선택해주세요<br />
-              <span className="text-orange-400 font-medium">여러 개 선택 가능해요</span>
-            </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">좋아하는 음식을 선택해주세요</h2>
+            <p className="text-gray-500 mb-6">여러 개 선택 가능해요</p>
 
-            <div className="grid grid-cols-2 gap-3">
-              {CUISINE_LIST.map(cuisine => (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {CUISINES.map(cuisine => (
                 <button
-                  key={cuisine.id}
-                  onClick={() => toggleCuisine(cuisine.id)}
-                  className={`py-4 rounded-2xl font-medium text-sm transition-all ${
-                    selectedCuisines.includes(cuisine.id)
-                      ? 'bg-orange-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 shadow-sm'
-                  }`}
+                  key={cuisine}
+                  onClick={() => toggleCuisine(cuisine)}
+                  className={`py-3 rounded-xl font-semibold border-2 transition-all
+                    ${selectedCuisines.includes(cuisine)
+                      ? 'bg-amber-400 border-amber-400 text-white'
+                      : 'bg-white border-gray-200 text-gray-700'}`}
                 >
-                  {cuisine.label}
+                  {cuisine}
                 </button>
               ))}
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl"
-              >
-                이전
-              </button>
+            <div className="flex gap-3">
+              <button onClick={() => setStep(2)} className="flex-1 border-2 border-gray-200 text-gray-600 py-3 rounded-xl font-bold">이전</button>
               <button
                 onClick={handleComplete}
-                disabled={selectedCuisines.length === 0}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-4 rounded-2xl transition-all"
+                disabled={selectedCuisines.length === 0 || loading}
+                className="flex-1 bg-amber-400 text-white py-3 rounded-xl font-bold disabled:opacity-40"
               >
-                완료 🎉
+                {loading ? '저장 중...' : '완료!'}
               </button>
             </div>
           </div>
         )}
-
       </div>
     </div>
   )
