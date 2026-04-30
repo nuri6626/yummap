@@ -2,61 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-// 더미 맛집 데이터
-const DUMMY_STORES = [
-  {
-    id: '1',
-    name: '진짜 맛있는 김치찌개',
-    category: '한식',
-    address: '서울 강남구 역삼동',
-    lat: 37.4979,
-    lng: 127.0276,
-    editor_score: 4.5,
-    user_score: 4.2,
-    review_count: 128,
-    taste_scores: {
-      아기입맛: 4.8,
-      까다로운입: 3.9,
-      매운맛선호: 4.6,
-      전통입맛: 4.7,
-    }
-  },
-  {
-    id: '2',
-    name: '숨은 맛집 라멘',
-    category: '일식',
-    address: '서울 강남구 논현동',
-    lat: 37.5112,
-    lng: 127.0231,
-    editor_score: 4.8,
-    user_score: 4.5,
-    review_count: 89,
-    taste_scores: {
-      아기입맛: 3.9,
-      까다로운입: 4.7,
-      매운맛선호: 3.5,
-      전통입맛: 4.0,
-    }
-  },
-  {
-    id: '3',
-    name: '할머니 손맛 국밥',
-    category: '한식',
-    address: '서울 강남구 삼성동',
-    lat: 37.5140,
-    lng: 127.0573,
-    editor_score: 4.3,
-    user_score: 4.6,
-    review_count: 234,
-    taste_scores: {
-      아기입맛: 4.9,
-      까다로운입: 4.1,
-      매운맛선호: 3.8,
-      전통입맛: 4.9,
-    }
-  },
-]
+import { createClient } from '@/lib/supabase/client'
 
 declare global {
   interface Window {
@@ -64,13 +10,85 @@ declare global {
   }
 }
 
-export default function MapPage() {
-  const mapRef = useRef<HTMLDivElement>(null)
-  const [selectedStore, setSelectedStore] = useState<typeof DUMMY_STORES[0] | null>(null)
-  const [mapLoaded, setMapLoaded] = useState(false)
-  const router = useRouter()
+interface Store {
+  id: string
+  name: string
+  category: string
+  address: string
+  latitude: number
+  longitude: number
+  editor_score: number
+  user_score: number
+  review_count: number
+}
 
+export default function MapPage() {
+  const router = useRouter()
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<any>(null)
+  const [selectedStore, setSelectedStore] = useState<Store | null>(null)
+  const [stores, setStores] = useState<Store[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mapLoaded, setMapLoaded] = useState(false)
+  const supabase = createClient()
+
+  // Supabase에서 가게 데이터 불러오기
   useEffect(() => {
+    const fetchStores = async () => {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('*')
+        .limit(50)
+
+      if (data && data.length > 0) {
+        setStores(data)
+      } else {
+        // 데이터 없으면 더미 데이터
+        setStores([
+          {
+            id: '1',
+            name: '맛있는 김치찌개',
+            category: '한식',
+            address: '서울시 강남구 역삼동 123',
+            latitude: 37.4979,
+            longitude: 127.0276,
+            editor_score: 4.5,
+            user_score: 4.2,
+            review_count: 128
+          },
+          {
+            id: '2',
+            name: '황금 삼겹살',
+            category: '고기',
+            address: '서울시 강남구 논현동 456',
+            latitude: 37.5110,
+            longitude: 127.0215,
+            editor_score: 4.3,
+            user_score: 4.0,
+            review_count: 89
+          },
+          {
+            id: '3',
+            name: '스시 오마카세',
+            category: '일식',
+            address: '서울시 강남구 청담동 789',
+            latitude: 37.5172,
+            longitude: 127.0473,
+            editor_score: 4.8,
+            user_score: 4.6,
+            review_count: 234
+          }
+        ])
+      }
+      setLoading(false)
+    }
+    fetchStores()
+  }, [])
+
+  // 카카오맵 로드
+  useEffect(() => {
+    if (loading) return
+
     const script = document.createElement('script')
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&autoload=false`
     script.async = true
@@ -78,192 +96,209 @@ export default function MapPage() {
 
     script.onload = () => {
       window.kakao.maps.load(() => {
-        if (!mapRef.current) return
-
-        const options = {
-          center: new window.kakao.maps.LatLng(37.4979, 127.0276),
-          level: 5,
-        }
-
-        const map = new window.kakao.maps.Map(mapRef.current, options)
         setMapLoaded(true)
-
-        // 마커 생성
-        DUMMY_STORES.forEach(store => {
-          const markerPosition = new window.kakao.maps.LatLng(store.lat, store.lng)
-
-          const marker = new window.kakao.maps.Marker({
-            position: markerPosition,
-            map: map,
-          })
-
-          // 마커 클릭 이벤트
-          window.kakao.maps.event.addListener(marker, 'click', () => {
-            setSelectedStore(store)
-          })
-        })
       })
     }
 
     return () => {
       document.head.removeChild(script)
     }
-  }, [])
+  }, [loading])
+
+  // 지도 초기화 & 마커 표시
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return
+
+    const options = {
+      center: new window.kakao.maps.LatLng(37.4979, 127.0276),
+      level: 5
+    }
+
+    const map = new window.kakao.maps.Map(mapRef.current, options)
+    mapInstanceRef.current = map
+
+    // 마커 추가
+    stores.forEach(store => {
+      const markerPosition = new window.kakao.maps.LatLng(
+        store.latitude,
+        store.longitude
+      )
+
+      const marker = new window.kakao.maps.Marker({
+        position: markerPosition,
+        map: map
+      })
+
+      // 마커 클릭 이벤트
+      window.kakao.maps.event.addListener(marker, 'click', () => {
+        setSelectedStore(store)
+      })
+
+      // 커스텀 오버레이 (가게 이름 표시)
+      const content = `
+        <div style="
+          background: white;
+          border: 2px solid #F59E0B;
+          border-radius: 8px;
+          padding: 4px 8px;
+          font-size: 12px;
+          font-weight: bold;
+          color: #1F2937;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          cursor: pointer;
+        ">
+          ${store.name}
+        </div>
+      `
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: markerPosition,
+        content: content,
+        yAnchor: 2.5
+      })
+
+      overlay.setMap(map)
+    })
+
+  }, [mapLoaded, stores])
+
+  // 현재 위치로 이동
+  const moveToCurrentLocation = () => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(position => {
+      const lat = position.coords.latitude
+      const lng = position.coords.longitude
+      const locPosition = new window.kakao.maps.LatLng(lat, lng)
+      mapInstanceRef.current?.setCenter(locPosition)
+    })
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-
-      {/* 상단 헤더 */}
-      <div className="bg-white px-4 py-3 flex items-center gap-3 shadow-sm z-10">
-        <h1 className="text-xl font-bold text-orange-500">🍜 얌맵</h1>
-        <div className="flex-1 bg-gray-100 rounded-xl px-4 py-2 flex items-center gap-2">
-          <span className="text-gray-400">🔍</span>
-          <span className="text-gray-400 text-sm">맛집 검색</span>
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* 헤더 */}
+      <div className="bg-white px-4 py-3 flex items-center justify-between shadow-sm z-10">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🍜</span>
+          <span className="text-xl font-black text-amber-500">YUMMAP</span>
         </div>
+        <button
+          onClick={() => router.push('/review/write')}
+          className="bg-amber-400 text-white px-4 py-2 rounded-full text-sm font-bold"
+        >
+          + 리뷰 작성
+        </button>
       </div>
 
-      {/* 필터 바 */}
-      <div className="bg-white px-4 py-2 flex gap-2 overflow-x-auto shadow-sm">
-        {['전체', '한식', '일식', '중식', '양식', '분식', '카페'].map(category => (
+      {/* 카테고리 필터 */}
+      <div className="bg-white px-4 py-2 flex gap-2 overflow-x-auto shadow-sm z-10">
+        {['전체', '한식', '일식', '중식', '양식', '고기', '카페', '분식'].map(cat => (
           <button
-            key={category}
-            className="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium bg-orange-50 text-orange-500 border border-orange-200"
+            key={cat}
+            className="whitespace-nowrap px-3 py-1 rounded-full text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-400 hover:text-white transition-colors"
           >
-            {category}
+            {cat}
           </button>
         ))}
       </div>
 
-      {/* 지도 */}
-      <div className="flex-1 relative">
+      {/* 지도 영역 */}
+      <div className="relative flex-1">
         <div ref={mapRef} className="w-full h-full" />
 
-        {!mapLoaded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+        {/* 로딩 */}
+        {(loading || !mapLoaded) && (
+          <div className="absolute inset-0 bg-amber-50 flex items-center justify-center">
             <div className="text-center">
-              <p className="text-4xl mb-2">🗺️</p>
-              <p className="text-gray-500">지도 불러오는 중...</p>
+              <div className="text-4xl mb-3">🗺️</div>
+              <p className="text-amber-600 font-bold">지도 불러오는 중...</p>
             </div>
           </div>
         )}
 
-        {/* 내 위치 버튼 */}
-        <button className="absolute bottom-4 right-4 bg-white shadow-lg rounded-full w-12 h-12 flex items-center justify-center text-xl z-10">
+        {/* 현재 위치 버튼 */}
+        <button
+          onClick={moveToCurrentLocation}
+          className="absolute bottom-4 right-4 bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-10 border border-gray-200"
+        >
           📍
         </button>
+      </div>
 
-        {/* 가게 상세 카드 */}
-        {selectedStore && (
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl p-5 z-20">
-
-            {/* 닫기 버튼 */}
+      {/* 가게 상세 카드 */}
+      {selectedStore && (
+        <div className="bg-white rounded-t-3xl shadow-2xl p-5 z-20">
+          <div className="flex justify-between items-start mb-3">
+            <div>
+              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                {selectedStore.category}
+              </span>
+              <h3 className="text-xl font-bold text-gray-800 mt-1">{selectedStore.name}</h3>
+              <p className="text-gray-500 text-sm mt-1">{selectedStore.address}</p>
+            </div>
             <button
               onClick={() => setSelectedStore(null)}
-              className="absolute top-4 right-4 text-gray-400 text-xl"
+              className="text-gray-400 text-2xl"
             >
               ✕
             </button>
+          </div>
 
-            {/* 가게 기본 정보 */}
-            <div className="mb-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs bg-orange-100 text-orange-500 px-2 py-0.5 rounded-full">
-                  {selectedStore.category}
-                </span>
-                <span className="text-xs text-gray-400">
-                  리뷰 {selectedStore.review_count}개
-                </span>
-              </div>
-              <h3 className="text-xl font-bold text-gray-800">
-                {selectedStore.name}
-              </h3>
-              <p className="text-gray-400 text-sm mt-1">
-                📍 {selectedStore.address}
+          {/* 평점 */}
+          <div className="flex gap-3 mb-4">
+            <div className="flex-1 bg-blue-50 rounded-xl p-3 text-center">
+              <p className="text-xs text-blue-600 font-medium mb-1">에디터 평점</p>
+              <p className="text-2xl font-black text-blue-600">
+                ⭐ {selectedStore.editor_score}
               </p>
             </div>
-
-            {/* 이중 평점 */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-orange-50 rounded-2xl p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">에디터 평점</p>
-                <p className="text-2xl font-bold text-orange-500">
-                  ⭐ {selectedStore.editor_score}
-                </p>
-              </div>
-              <div className="bg-gray-50 rounded-2xl p-3 text-center">
-                <p className="text-xs text-gray-500 mb-1">소비자 평점</p>
-                <p className="text-2xl font-bold text-gray-700">
-                  ⭐ {selectedStore.user_score}
-                </p>
-              </div>
+            <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
+              <p className="text-xs text-amber-600 font-medium mb-1">소비자 평점</p>
+              <p className="text-2xl font-black text-amber-600">
+                ⭐ {selectedStore.user_score}
+              </p>
             </div>
-
-            {/* 입맛별 평점 */}
-            <div className="mb-4">
-              <p className="text-sm font-bold text-gray-700 mb-2">입맛별 평점</p>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(selectedStore.taste_scores).map(([type, score]) => (
-                  <div key={type} className="flex justify-between items-center bg-gray-50 rounded-xl px-3 py-2">
-                    <span className="text-xs text-gray-500">{type}</span>
-                    <span className="text-sm font-bold text-orange-500">⭐ {score}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 버튼 */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => router.push(`/store/${selectedStore.id}`)}
-                className="flex-1 bg-orange-500 text-white font-bold py-3 rounded-2xl"
-              >
-                상세보기
-              </button>
-              <button className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-xl">
-                🗺️
-              </button>
-            </div>
-
           </div>
-        )}
-      </div>
+
+          <p className="text-sm text-gray-500 mb-4">리뷰 {selectedStore.review_count}개</p>
+
+          {/* 버튼 */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push(`/store/${selectedStore.id}`)}
+              className="flex-1 bg-amber-400 text-white py-3 rounded-xl font-bold"
+            >
+              상세 보기
+            </button>
+            <button
+              onClick={() => router.push('/review/write')}
+              className="flex-1 border-2 border-amber-400 text-amber-500 py-3 rounded-xl font-bold"
+            >
+              리뷰 쓰기
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 하단 네비게이션 */}
-      <div className="bg-white border-t border-gray-100 px-4 py-2 flex justify-around">
-        <button className="flex flex-col items-center gap-1 text-orange-500">
-          <span className="text-2xl">🗺️</span>
-          <span className="text-xs font-medium">지도</span>
-        </button>
-        <button
-          onClick={() => router.push('/feed')}
-          className="flex flex-col items-center gap-1 text-gray-400"
-        >
-          <span className="text-2xl">📰</span>
-          <span className="text-xs">피드</span>
-        </button>
-        <button
-          onClick={() => router.push('/review/write')}
-          className="flex flex-col items-center gap-1 text-gray-400"
-        >
-          <span className="text-2xl">✏️</span>
-          <span className="text-xs">리뷰</span>
-        </button>
-        <button
-          onClick={() => router.push('/saved')}
-          className="flex flex-col items-center gap-1 text-gray-400"
-        >
-          <span className="text-2xl">🗂️</span>
-          <span className="text-xs">저장</span>
-        </button>
-        <button
-          onClick={() => router.push('/profile')}
-          className="flex flex-col items-center gap-1 text-gray-400"
-        >
-          <span className="text-2xl">👤</span>
-          <span className="text-xs">프로필</span>
-        </button>
+      <div className="bg-white border-t border-gray-100 px-6 py-3 flex justify-around z-10">
+        {[
+          { icon: '🗺️', label: '지도', path: '/map' },
+          { icon: '📰', label: '피드', path: '/feed' },
+          { icon: '✍️', label: '리뷰', path: '/review/write' },
+          { icon: '🔖', label: '저장', path: '/saved' },
+          { icon: '👤', label: '프로필', path: '/profile' },
+        ].map(item => (
+          <button
+            key={item.path}
+            onClick={() => router.push(item.path)}
+            className="flex flex-col items-center gap-1"
+          >
+            <span className="text-2xl">{item.icon}</span>
+            <span className="text-xs text-gray-500">{item.label}</span>
+          </button>
+        ))}
       </div>
-
     </div>
   )
 }
