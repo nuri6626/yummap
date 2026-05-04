@@ -1,287 +1,106 @@
-'use client'
+﻿'use client'
 
-import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-
-declare global {
-  interface Window {
-    kakao: any
-  }
-}
+import { useState } from 'react'
 
 interface Store {
   id: string
   name: string
   category: string
   address: string
-  latitude: number
-  longitude: number
   editor_score: number
   user_score: number
   review_count: number
 }
 
+const DUMMY_STORES: Store[] = [
+  { id: '1', name: '맛있는 김치찌개', category: '한식', address: '서울시 강남구 역삼동 123', editor_score: 4.5, user_score: 4.2, review_count: 128 },
+  { id: '2', name: '황금 삼겹살', category: '고기', address: '서울시 강남구 논현동 456', editor_score: 4.3, user_score: 4.0, review_count: 89 },
+  { id: '3', name: '스시 오마카세', category: '일식', address: '서울시 강남구 청담동 789', editor_score: 4.8, user_score: 4.6, review_count: 234 }
+]
+
 export default function MapPage() {
   const router = useRouter()
-  const mapRef = useRef<HTMLDivElement>(null)
-  const mapInstanceRef = useRef<any>(null)
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
-  const [stores, setStores] = useState<Store[]>([])
-  const [loading, setLoading] = useState(true)
-  const [mapLoaded, setMapLoaded] = useState(false)
-  const supabase = createClient()
 
-  // Supabase에서 가게 데이터 불러오기
-  useEffect(() => {
-    const fetchStores = async () => {
-      const { data, error } = await supabase
-        .from('stores')
-        .select('*')
-        .limit(50)
-
-      if (data && data.length > 0) {
-        setStores(data)
-      } else {
-        // 데이터 없으면 더미 데이터
-        setStores([
-          {
-            id: '1',
-            name: '맛있는 김치찌개',
-            category: '한식',
-            address: '서울시 강남구 역삼동 123',
-            latitude: 37.4979,
-            longitude: 127.0276,
-            editor_score: 4.5,
-            user_score: 4.2,
-            review_count: 128
-          },
-          {
-            id: '2',
-            name: '황금 삼겹살',
-            category: '고기',
-            address: '서울시 강남구 논현동 456',
-            latitude: 37.5110,
-            longitude: 127.0215,
-            editor_score: 4.3,
-            user_score: 4.0,
-            review_count: 89
-          },
-          {
-            id: '3',
-            name: '스시 오마카세',
-            category: '일식',
-            address: '서울시 강남구 청담동 789',
-            latitude: 37.5172,
-            longitude: 127.0473,
-            editor_score: 4.8,
-            user_score: 4.6,
-            review_count: 234
-          }
-        ])
-      }
-      setLoading(false)
-    }
-    fetchStores()
-  }, [])
-
-  // 카카오맵 로드
-  useEffect(() => {
-    if (loading) return
-
-    const script = document.createElement('script')
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&autoload=false`
-    script.async = true
-    document.head.appendChild(script)
-
-    script.onload = () => {
-      window.kakao.maps.load(() => {
-        setMapLoaded(true)
-      })
-    }
-
-    return () => {
-      document.head.removeChild(script)
-    }
-  }, [loading])
-
-  // 지도 초기화 & 마커 표시
-  useEffect(() => {
-    if (!mapLoaded || !mapRef.current) return
-
-    const options = {
-      center: new window.kakao.maps.LatLng(37.4979, 127.0276),
-      level: 5
-    }
-
-    const map = new window.kakao.maps.Map(mapRef.current, options)
-    mapInstanceRef.current = map
-
-    // 마커 추가
-    stores.forEach(store => {
-      const markerPosition = new window.kakao.maps.LatLng(
-        store.latitude,
-        store.longitude
-      )
-
-      const marker = new window.kakao.maps.Marker({
-        position: markerPosition,
-        map: map
-      })
-
-      // 마커 클릭 이벤트
-      window.kakao.maps.event.addListener(marker, 'click', () => {
-        setSelectedStore(store)
-      })
-
-      // 커스텀 오버레이 (가게 이름 표시)
-      const content = `
-        <div style="
-          background: white;
-          border: 2px solid #F59E0B;
-          border-radius: 8px;
-          padding: 4px 8px;
-          font-size: 12px;
-          font-weight: bold;
-          color: #1F2937;
-          white-space: nowrap;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          cursor: pointer;
-        ">
-          ${store.name}
-        </div>
-      `
-
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: markerPosition,
-        content: content,
-        yAnchor: 2.5
-      })
-
-      overlay.setMap(map)
-    })
-
-  }, [mapLoaded, stores])
-
-  // 현재 위치로 이동
-  const moveToCurrentLocation = () => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(position => {
-      const lat = position.coords.latitude
-      const lng = position.coords.longitude
-      const locPosition = new window.kakao.maps.LatLng(lat, lng)
-      mapInstanceRef.current?.setCenter(locPosition)
-    })
+  const handleStoreSelect = (storeId: string) => {
+    const store = DUMMY_STORES.find(s => s.id === storeId)
+    if (store) setSelectedStore(store)
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+
       {/* 헤더 */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🍜</span>
-          <span className="text-xl font-black text-amber-500">YUMMAP</span>
+      <div style={{ background: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.1)', zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '24px' }}>🍜</span>
+          <span style={{ fontSize: '20px', fontWeight: '900', color: '#F59E0B' }}>YUMMAP</span>
         </div>
-        <button
-          onClick={() => router.push('/review/write')}
-          className="bg-amber-400 text-white px-4 py-2 rounded-full text-sm font-bold"
-        >
+        <button onClick={() => router.push('/review/write')} style={{ background: '#F59E0B', color: 'white', padding: '8px 16px', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
           + 리뷰 작성
         </button>
       </div>
 
       {/* 카테고리 필터 */}
-      <div className="bg-white px-4 py-2 flex gap-2 overflow-x-auto shadow-sm z-10">
+      <div style={{ display: 'flex', gap: '8px', padding: '8px 16px', background: 'white', overflowX: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
         {['전체', '한식', '일식', '중식', '양식', '고기', '카페', '분식'].map(cat => (
-          <button
-            key={cat}
-            className="whitespace-nowrap px-3 py-1 rounded-full text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-400 hover:text-white transition-colors"
-          >
+          <button key={cat} style={{ whiteSpace: 'nowrap', padding: '4px 12px', borderRadius: '20px', fontSize: '13px', background: '#FFFBEB', color: '#D97706', border: '1px solid #FDE68A', cursor: 'pointer' }}>
             {cat}
           </button>
         ))}
       </div>
 
-      {/* 지도 영역 */}
-      <div className="relative flex-1">
-        <div ref={mapRef} className="w-full h-full" />
-
-        {/* 로딩 */}
-        {(loading || !mapLoaded) && (
-          <div className="absolute inset-0 bg-amber-50 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-4xl mb-3">🗺️</div>
-              <p className="text-amber-600 font-bold">지도 불러오는 중...</p>
-            </div>
-          </div>
-        )}
-
-        {/* 현재 위치 버튼 */}
-        <button
-          onClick={moveToCurrentLocation}
-          className="absolute bottom-4 right-4 bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl z-10 border border-gray-200"
-        >
-          📍
-        </button>
+      {/* 지도 iframe */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        <iframe
+          src="/kakaomap.html"
+          style={{ width: '100%', height: '100%', border: 'none' }}
+          title="kakaomap"
+          onLoad={(e) => {
+            const iframe = e.target as HTMLIFrameElement
+            try {
+              iframe.contentWindow?.addEventListener('message', (event) => {
+                if (event.data.type === 'storeSelect') {
+                  handleStoreSelect(event.data.storeId)
+                }
+              })
+            } catch {}
+          }}
+        />
       </div>
 
       {/* 가게 상세 카드 */}
       {selectedStore && (
-        <div className="bg-white rounded-t-3xl shadow-2xl p-5 z-20">
-          <div className="flex justify-between items-start mb-3">
+        <div style={{ background: 'white', padding: '20px', boxShadow: '0 -4px 12px rgba(0,0,0,0.1)', zIndex: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div>
-              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
-                {selectedStore.category}
-              </span>
-              <h3 className="text-xl font-bold text-gray-800 mt-1">{selectedStore.name}</h3>
-              <p className="text-gray-500 text-sm mt-1">{selectedStore.address}</p>
+              <span style={{ fontSize: '12px', background: '#FEF3C7', color: '#D97706', padding: '2px 8px', borderRadius: '10px' }}>{selectedStore.category}</span>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: '4px 0 0' }}>{selectedStore.name}</h3>
+              <p style={{ color: '#6B7280', fontSize: '14px', margin: '4px 0 0' }}>{selectedStore.address}</p>
             </div>
-            <button
-              onClick={() => setSelectedStore(null)}
-              className="text-gray-400 text-2xl"
-            >
-              ✕
-            </button>
+            <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
           </div>
-
-          {/* 평점 */}
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1 bg-blue-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-blue-600 font-medium mb-1">에디터 평점</p>
-              <p className="text-2xl font-black text-blue-600">
-                ⭐ {selectedStore.editor_score}
-              </p>
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ flex: 1, background: '#EFF6FF', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+              <p style={{ fontSize: '12px', color: '#2563EB', margin: '0 0 4px' }}>에디터 평점</p>
+              <p style={{ fontSize: '22px', fontWeight: '900', color: '#2563EB', margin: 0 }}>★ {selectedStore.editor_score}</p>
             </div>
-            <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-amber-600 font-medium mb-1">소비자 평점</p>
-              <p className="text-2xl font-black text-amber-600">
-                ⭐ {selectedStore.user_score}
-              </p>
+            <div style={{ flex: 1, background: '#FFFBEB', borderRadius: '12px', padding: '12px', textAlign: 'center' }}>
+              <p style={{ fontSize: '12px', color: '#D97706', margin: '0 0 4px' }}>소비자 평점</p>
+              <p style={{ fontSize: '22px', fontWeight: '900', color: '#D97706', margin: 0 }}>★ {selectedStore.user_score}</p>
             </div>
           </div>
-
-          <p className="text-sm text-gray-500 mb-4">리뷰 {selectedStore.review_count}개</p>
-
-          {/* 버튼 */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push(`/store/${selectedStore.id}`)}
-              className="flex-1 bg-amber-400 text-white py-3 rounded-xl font-bold"
-            >
-              상세 보기
-            </button>
-            <button
-              onClick={() => router.push('/review/write')}
-              className="flex-1 border-2 border-amber-400 text-amber-500 py-3 rounded-xl font-bold"
-            >
-              리뷰 쓰기
-            </button>
+          <p style={{ fontSize: '14px', color: '#6B7280', marginBottom: '16px' }}>리뷰 {selectedStore.review_count}개</p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={() => router.push('/store/' + selectedStore.id)} style={{ flex: 1, background: '#F59E0B', color: 'white', padding: '12px', borderRadius: '12px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>상세 보기</button>
+            <button onClick={() => router.push('/review/write')} style={{ flex: 1, background: 'white', color: '#F59E0B', padding: '12px', borderRadius: '12px', fontWeight: 'bold', border: '2px solid #F59E0B', cursor: 'pointer' }}>리뷰 쓰기</button>
           </div>
         </div>
       )}
 
       {/* 하단 네비게이션 */}
-      <div className="bg-white border-t border-gray-100 px-6 py-3 flex justify-around z-10">
+      <div style={{ background: 'white', borderTop: '1px solid #F3F4F6', padding: '12px 24px', display: 'flex', justifyContent: 'space-around' }}>
         {[
           { icon: '🗺️', label: '지도', path: '/map' },
           { icon: '📰', label: '피드', path: '/feed' },
@@ -289,13 +108,9 @@ export default function MapPage() {
           { icon: '🔖', label: '저장', path: '/saved' },
           { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
-          <button
-            key={item.path}
-            onClick={() => router.push(item.path)}
-            className="flex flex-col items-center gap-1"
-          >
-            <span className="text-2xl">{item.icon}</span>
-            <span className="text-xs text-gray-500">{item.label}</span>
+          <button key={item.path} onClick={() => router.push(item.path)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <span style={{ fontSize: '24px' }}>{item.icon}</span>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>{item.label}</span>
           </button>
         ))}
       </div>

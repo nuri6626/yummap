@@ -29,7 +29,25 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      return NextResponse.redirect(new URL('/onboarding', requestUrl.origin))
+      // 로그인한 유저 정보 가져오기
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (user) {
+        // 온보딩 완료 여부 확인 (nickname이 있으면 완료된 것)
+        const { data: profile } = await supabase
+          .from('user_taste_profile')
+          .select('nickname')
+          .eq('user_id', user.id)
+          .single()
+
+        if (profile?.nickname) {
+          // 온보딩 완료 → 맵으로 이동
+          return NextResponse.redirect(new URL('/map', requestUrl.origin))
+        } else {
+          // 온보딩 미완료 → 온보딩으로 이동
+          return NextResponse.redirect(new URL('/onboarding', requestUrl.origin))
+        }
+      }
     }
   }
 

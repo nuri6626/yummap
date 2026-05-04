@@ -19,15 +19,27 @@ export default function LoginPage() {
   }
 
   const handleKakaoLogin = async () => {
-    setLoading(true)
-    await supabase.auth.signInWithOAuth({
+  setLoading(true)
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'kakao',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     })
+    if (error) {
+      console.error('카카오 로그인 오류:', error.message)
+      alert('카카오 로그인 오류: ' + error.message)
+    }
+  } catch (err) {
+    console.error('예외 발생:', err)
+    alert('예외 발생: ' + err)
+  } finally {
     setLoading(false)
   }
+}
+
+
 
   return (
     <div className="min-h-screen bg-orange-50 flex flex-col items-center justify-center px-4">
