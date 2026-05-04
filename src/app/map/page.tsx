@@ -33,10 +33,10 @@ export default function MapPage() {
 
       {/* 헤더 */}
       <div style={{ background: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.1)', zIndex: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '24px' }}>🍜</span>
-          <span style={{ fontSize: '20px', fontWeight: '900', color: '#F59E0B' }}>YUMMAP</span>
-        </div>
+      <div style={{display:'flex',alignItems:'center'}}>
+  <img src="/yum2.png" alt="yummap" style={{height:'32px'}} />
+</div>
+ 
         <button onClick={() => router.push('/review/write')} style={{ background: '#F59E0B', color: 'white', padding: '8px 16px', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}>
           + 리뷰 작성
         </button>
