@@ -27,7 +27,7 @@ interface TasteProfile {
 }
 
 const YumLogo = () => (
-  <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
+  <img src="/yum2.png" style={{ height:'32px' }} />
 )
 
 
