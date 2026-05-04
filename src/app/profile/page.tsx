@@ -27,18 +27,9 @@ interface TasteProfile {
 }
 
 const YumLogo = () => (
-  <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#FF5A3D"/>
-        <stop offset="100%" stopColor="#FF8560"/>
-      </linearGradient>
-    </defs>
-    <path d="M50 82L22 42Q12 26 28 18Q42 12 50 32Q58 12 72 18Q88 26 78 42Z" fill="url(#g1)"/>
-    <rect x="46" y="52" width="8" height="28" rx="4" fill="white"/>
-    <circle cx="50" cy="36" r="7" fill="white" opacity="0.85"/>
-  </svg>
+  <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
 )
+
 
 export default function ProfilePage() {
   const router = useRouter()
