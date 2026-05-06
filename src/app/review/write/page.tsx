@@ -9,7 +9,13 @@ export default function ReviewWritePage() {
   const supabase = createClient()
 
   const storeId = searchParams.get('store_id') || ''
-  const storeName = searchParams.get('store_name') || ''
+const storeName = decodeURIComponent(searchParams.get('store_name') || '')
+const storeAddress = decodeURIComponent(searchParams.get('store_address') || '')
+const storeCategory = decodeURIComponent(searchParams.get('store_category') || '')
+const storeLat = searchParams.get('store_lat') || ''
+const storeLng = searchParams.get('store_lng') || ''
+const storePhone = decodeURIComponent(searchParams.get('store_phone') || '')
+
 
   const [loading, setLoading] = useState(false)
   const [tasteScore, setTasteScore] = useState(3)
@@ -178,8 +184,9 @@ export default function ReviewWritePage() {
             <div>
               <p style={{ fontSize: '12px', color: '#999', margin: '0 0 2px' }}>리뷰 작성 중인 가게</p>
               <p style={{ fontSize: '18px', fontWeight: '900', color: '#FF5A3D', margin: 0 }}>
-                {storeName || '가게 이름 없음'}
-              </p>
+  {storeName || '지도에서 가게를 선택해주세요'}
+</p>
+
             </div>
           </div>
         </div>
