@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const YumLogo = () => (
-  <img src="/yum1.png" alt="yummap" style={{ width:'120px' }} />
+  <img src="/yum1.png" style={{ width:'120px' }} />
 )
+
 
 
 export default function LoginPage() {

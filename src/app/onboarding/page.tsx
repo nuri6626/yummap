@@ -7,8 +7,11 @@ import { createClient } from '@/lib/supabase/client'
 const CUISINES = ['한식','중식','일식','양식','분식','해산물','고기','카페','디저트','패스트푸드']
 
 const YumLogo = () => (
-  <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
+  <svg width="32" height="32" ...>
+    ...
+  </svg>
 )
+
 
 
 export default function OnboardingPage() {

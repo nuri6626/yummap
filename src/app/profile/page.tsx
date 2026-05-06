@@ -31,6 +31,7 @@ const YumLogo = () => (
 )
 
 
+
 export default function ProfilePage() {
   const router = useRouter()
   const supabase = createClient()
