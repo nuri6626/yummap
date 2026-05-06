@@ -4,13 +4,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 declare global {
-  interface Window {
-    kakao: any
-  }
+  interface Window { kakao: any }
 }
 
 interface Store {
-  id: number
+  id: string
   name: string
   category: string
   address: string
@@ -21,6 +19,7 @@ interface Store {
   editor_score?: number
   user_score?: number
   review_count?: number
+  isKakao?: boolean
 }
 
 export default function MapPage() {
@@ -29,58 +28,40 @@ export default function MapPage() {
   const mapRef = useRef<HTMLDivElement>(null)
   const kakaoMapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
-  
+
   const [stores, setStores] = useState<Store[]>([])
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [activeCategory, setActiveCategory] = useState('전체')
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   const CATEGORIES = ['전체', '한식', '일식', '중식', '양식', '고기', '카페', '분식', '해산물', '디저트']
 
-  // 1단계: 가게 데이터 fetch
-  useEffect(() => {
-    const fetchStores = async () => {
-      const { data, error } = await supabase.from('stores').select('*')
-      console.log('가게 데이터:', data, '오류:', error)
-      if (data && data.length > 0) {
-        setStores(data)
-      }
-    }
-    fetchStores()
-  }, [])
-
-  // 2단계: 사용자 위치 가져오기
+  // 1단계: 사용자 위치
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        },
-        () => {
-          setUserLocation({ lat: 35.5384, lng: 129.3114 }) // 울산 기본값
-        }
+        pos => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => setUserLocation({ lat: 35.5384, lng: 129.3114 })
       )
     } else {
       setUserLocation({ lat: 35.5384, lng: 129.3114 })
     }
   }, [])
 
-  // 3단계: 카카오맵 초기화 (위치 준비된 후)
+  // 2단계: 카카오맵 초기화
   useEffect(() => {
     if (!userLocation) return
-    
     const initMap = () => {
       if (window.kakao && window.kakao.maps) {
         window.kakao.maps.load(() => {
           if (!mapRef.current) return
-          const options = {
+          kakaoMapRef.current = new window.kakao.maps.Map(mapRef.current, {
             center: new window.kakao.maps.LatLng(userLocation.lat, userLocation.lng),
-            level: 5,
-          }
-          kakaoMapRef.current = new window.kakao.maps.Map(mapRef.current, options)
+            level: 4,
+          })
           setMapReady(true)
-          console.log('카카오맵 초기화 완료')
         })
       } else {
         setTimeout(initMap, 300)
@@ -89,55 +70,160 @@ export default function MapPage() {
     initMap()
   }, [userLocation])
 
-  // 4단계: 마커 표시 (맵 + 데이터 모두 준비된 후)
+  // 3단계: 주변 음식점 검색 (카카오 장소 검색 API)
+  useEffect(() => {
+    if (!mapReady || !userLocation) return
+    searchNearbyStores(userLocation.lat, userLocation.lng, activeCategory)
+  }, [mapReady, userLocation])
+
+  const searchNearbyStores = async (lat: number, lng: number, category: string) => {
+    const keyword = category === '전체' ? '음식점' : category
+    const REST_API_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY
+
+    try {
+      const response = await fetch(
+        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=2000&size=15&category_group_code=FD6`,
+        {
+          headers: { Authorization: `KakaoAK ${REST_API_KEY}` }
+        }
+      )
+      const data = await response.json()
+      console.log('카카오 장소 검색 결과:', data)
+
+      if (data.documents) {
+        const kakaoStores: Store[] = data.documents.map((doc: any) => ({
+          id: doc.id,
+          name: doc.place_name,
+          category: doc.category_name?.split(' > ').pop() || '음식점',
+          address: doc.road_address_name || doc.address_name,
+          latitude: parseFloat(doc.y),
+          longitude: parseFloat(doc.x),
+          phone: doc.phone,
+          isKakao: true,
+        }))
+        setStores(kakaoStores)
+      }
+    } catch (err) {
+      console.error('장소 검색 오류:', err)
+      // 카카오 API 실패시 Supabase 데이터 사용
+      const { data } = await supabase.from('stores').select('*')
+      setStores(data || [])
+    }
+  }
+
+  const searchByKeyword = async () => {
+    if (!searchKeyword.trim() || !userLocation) return
+    const REST_API_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY
+    try {
+      const response = await fetch(
+        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(searchKeyword)}&x=${userLocation.lng}&y=${userLocation.lat}&radius=5000&size=15`,
+        { headers: { Authorization: `KakaoAK ${REST_API_KEY}` } }
+      )
+      const data = await response.json()
+      if (data.documents) {
+        const results: Store[] = data.documents.map((doc: any) => ({
+          id: doc.id,
+          name: doc.place_name,
+          category: doc.category_name?.split(' > ').pop() || '음식점',
+          address: doc.road_address_name || doc.address_name,
+          latitude: parseFloat(doc.y),
+          longitude: parseFloat(doc.x),
+          phone: doc.phone,
+          isKakao: true,
+        }))
+        setStores(results)
+        if (results.length > 0 && kakaoMapRef.current) {
+          kakaoMapRef.current.setCenter(
+            new window.kakao.maps.LatLng(results[0].latitude, results[0].longitude)
+          )
+        }
+      }
+    } catch (err) {
+      console.error('검색 오류:', err)
+    }
+  }
+
+  // 4단계: 마커 표시
   useEffect(() => {
     if (!mapReady || !kakaoMapRef.current) return
-    
-    console.log('마커 렌더링 시작, 가게 수:', stores.length)
-
-    // 기존 마커 제거
     markersRef.current.forEach(m => m.setMap(null))
     markersRef.current = []
 
-    const filtered = activeCategory === '전체'
-      ? stores
-      : stores.filter(s => s.category === activeCategory)
-
-    console.log('필터된 가게 수:', filtered.length)
-
-    filtered.forEach(store => {
+    stores.forEach(store => {
       const position = new window.kakao.maps.LatLng(store.latitude, store.longitude)
-      const marker = new window.kakao.maps.Marker({
+
+      const content = `
+        <div style="
+          background: white;
+          border: 2px solid #FF5A3D;
+          border-radius: 20px;
+          padding: 4px 10px;
+          font-size: 12px;
+          font-weight: 700;
+          color: #FF5A3D;
+          white-space: nowrap;
+          box-shadow: 0 2px 6px rgba(255,90,61,0.3);
+          cursor: pointer;
+        ">${store.name}</div>
+      `
+
+      const overlay = new window.kakao.maps.CustomOverlay({
         position,
-        map: kakaoMapRef.current,
+        content,
+        yAnchor: 1,
       })
+      overlay.setMap(kakaoMapRef.current)
 
-      window.kakao.maps.event.addListener(marker, 'click', () => {
-        setSelectedStore(store)
-      })
+      const overlayDiv = overlay.getContent()
+      if (typeof overlayDiv !== 'string') {
+        overlayDiv.addEventListener('click', () => setSelectedStore(store))
+      }
 
+      // 일반 마커도 추가 (클릭 이벤트용)
+      const marker = new window.kakao.maps.Marker({ position, map: kakaoMapRef.current })
+      marker.setVisible(false)
+      window.kakao.maps.event.addListener(marker, 'click', () => setSelectedStore(store))
       markersRef.current.push(marker)
     })
+  }, [mapReady, stores])
 
-    console.log('마커 추가 완료:', markersRef.current.length, '개')
-  }, [mapReady, stores, activeCategory])
+  // 카테고리 변경시 재검색
+  const handleCategoryChange = (cat: string) => {
+    setActiveCategory(cat)
+    if (userLocation) searchNearbyStores(userLocation.lat, userLocation.lng, cat)
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'white', borderBottom: '1px solid #F2F2F2', zIndex: 10 }}>
         <img src="/yum2.png" alt="yummap" style={{ height: '32px' }} />
-        <button
-          onClick={() => router.push('/review/write')}
+        <button onClick={() => router.push('/review/write')}
           style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '20px', padding: '8px 16px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
           + 리뷰 작성
+        </button>
+      </div>
+
+      {/* 검색창 */}
+      <div style={{ padding: '10px 16px', background: 'white', borderBottom: '1px solid #F2F2F2', display: 'flex', gap: '8px' }}>
+        <input
+          type="text"
+          placeholder="🔍 맛집 검색..."
+          value={searchKeyword}
+          onChange={e => setSearchKeyword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && searchByKeyword()}
+          style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #F2F2F2', fontSize: '14px', outline: 'none' }}
+        />
+        <button onClick={searchByKeyword}
+          style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+          검색
         </button>
       </div>
 
       {/* 카테고리 필터 */}
       <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', overflowX: 'auto', background: 'white', borderBottom: '1px solid #F2F2F2' }}>
         {CATEGORIES.map(cat => (
-          <button key={cat} onClick={() => setActiveCategory(cat)}
+          <button key={cat} onClick={() => handleCategoryChange(cat)}
             style={{ whiteSpace: 'nowrap', padding: '6px 14px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600', background: activeCategory === cat ? '#FF5A3D' : '#F2F2F2', color: activeCategory === cat ? 'white' : '#666' }}>
             {cat}
           </button>
@@ -149,19 +235,19 @@ export default function MapPage() {
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 
         {/* 내 위치 버튼 */}
-        <button
-          onClick={() => {
-            if (userLocation && kakaoMapRef.current) {
-              kakaoMapRef.current.setCenter(new window.kakao.maps.LatLng(userLocation.lat, userLocation.lng))
-            }
-          }}
+        <button onClick={() => {
+          if (userLocation && kakaoMapRef.current) {
+            kakaoMapRef.current.setCenter(new window.kakao.maps.LatLng(userLocation.lat, userLocation.lng))
+            searchNearbyStores(userLocation.lat, userLocation.lng, activeCategory)
+          }
+        }}
           style={{ position: 'absolute', bottom: '20px', right: '16px', background: 'white', border: '1px solid #eee', borderRadius: '50%', width: '44px', height: '44px', fontSize: '20px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', zIndex: 5 }}>
           📍
         </button>
 
         {/* 가게 수 뱃지 */}
         <div style={{ position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', color: 'white', borderRadius: '20px', padding: '4px 14px', fontSize: '12px', fontWeight: '600', zIndex: 5 }}>
-          {activeCategory === '전체' ? stores.length : stores.filter(s => s.category === activeCategory).length}개 맛집
+          주변 {stores.length}개 맛집
         </div>
       </div>
 
@@ -177,27 +263,7 @@ export default function MapPage() {
             </div>
             <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
           </div>
-          <div style={{ display: 'flex', gap: '12px', margin: '12px 0' }}>
-            {selectedStore.editor_score && (
-              <div style={{ background: '#F8F8F8', borderRadius: '12px', padding: '8px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#FF5A3D' }}>⭐ {selectedStore.editor_score}</div>
-                <div style={{ fontSize: '11px', color: '#999' }}>에디터</div>
-              </div>
-            )}
-            {selectedStore.user_score && (
-              <div style={{ background: '#F8F8F8', borderRadius: '12px', padding: '8px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#FF5A3D' }}>⭐ {selectedStore.user_score}</div>
-                <div style={{ fontSize: '11px', color: '#999' }}>유저</div>
-              </div>
-            )}
-            {selectedStore.review_count && (
-              <div style={{ background: '#F8F8F8', borderRadius: '12px', padding: '8px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#1A1A1A' }}>{selectedStore.review_count}</div>
-                <div style={{ fontSize: '11px', color: '#999' }}>리뷰</div>
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             <button
               onClick={() => router.push(`/review/write?store_id=${selectedStore.id}&store_name=${encodeURIComponent(selectedStore.name)}`)}
               style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
@@ -216,15 +282,15 @@ export default function MapPage() {
       <div style={{ display: 'flex', justifyContent: 'space-around', padding: '12px 0 20px', background: 'white', borderTop: '1px solid #F2F2F2' }}>
         {[
           { icon: '🗺️', label: '지도', path: '/map', active: true },
-          { icon: '📰', label: '피드', path: '/feed', active: false },
-          { icon: '✏️', label: '리뷰', path: '/review/write', active: false },
-          { icon: '❤️', label: '저장', path: '/saved', active: false },
-          { icon: '👤', label: '프로필', path: '/profile', active: false },
+          { icon: '📰', label: '피드', path: '/feed' },
+          { icon: '✏️', label: '리뷰', path: '/review/write' },
+          { icon: '❤️', label: '저장', path: '/saved' },
+          { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
           <button key={item.path} onClick={() => router.push(item.path)}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', cursor: 'pointer' }}>
             <span style={{ fontSize: '22px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', fontWeight: '600', color: item.active ? '#FF5A3D' : '#999' }}>{item.label}</span>
+            <span style={{ fontSize: '10px', fontWeight: '600', color: (item as any).active ? '#FF5A3D' : '#999' }}>{item.label}</span>
           </button>
         ))}
       </div>
