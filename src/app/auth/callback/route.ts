@@ -1,11 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
 
-export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url)
-  const code = requestUrl.searchParams.get('code')
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  const next = searchParams.get('next') ?? '/'
 
   if (code) {
     const cookieStore = await cookies()
@@ -16,11 +16,9 @@ export async function GET(request: NextRequest) {
         cookies: {
           getAll() { return cookieStore.getAll() },
           setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {}
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
           },
         },
       }
@@ -29,27 +27,26 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // 로그인한 유저 정보 가져오기
+      // 로그인 성공 → 프로필 존재 여부 확인
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
-        // 온보딩 완료 여부 확인 (nickname이 있으면 완료된 것)
         const { data: profile } = await supabase
           .from('user_taste_profile')
-          .select('nickname')
+          .select('id')
           .eq('user_id', user.id)
           .single()
 
-        if (profile?.nickname) {
-          // 온보딩 완료 → 맵으로 이동
-          return NextResponse.redirect(new URL('/map', requestUrl.origin))
+        if (profile) {
+          // 프로필 있음 → 바로 지도로
+          return NextResponse.redirect(`${origin}/map`)
         } else {
-          // 온보딩 미완료 → 온보딩으로 이동
-          return NextResponse.redirect(new URL('/onboarding', requestUrl.origin))
+          // 프로필 없음 → 온보딩으로
+          return NextResponse.redirect(`${origin}/onboarding`)
         }
       }
     }
   }
 
-  return NextResponse.redirect(new URL('/login?error=auth_error', requestUrl.origin))
+  return NextResponse.redirect(`${origin}/map`)
 }
