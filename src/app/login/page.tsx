@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const YumLogo = () => (
-  <img src="/yum1.png" style={{ width:'120px' }} />
+  <img src="/yum1.png" style={{ width:'300px' }} />
 )
 
 
@@ -51,20 +51,7 @@ export default function LoginPage() {
       <div style={{ position:'fixed', bottom:'-60px', left:'-60px', width:'200px', height:'200px', background:'rgba(255,133,96,0.08)', borderRadius:'50%', zIndex:0 }}/>
 
       {/* 로고 영역 */}
-      <div style={{ textAlign:'center', marginBottom:'48px', position:'relative', zIndex:1 }}>
-        <div style={{ display:'flex', justifyContent:'center', marginBottom:'16px' }}>
-          <YumLogo />
-        </div>
-        <h1 style={{ fontSize:'36px', fontWeight:'900', color:'#1A1A1A', margin:'0 0 8px', letterSpacing:'-1px' }}>
-          yummap
-        </h1>
-        <p style={{ color:'#FF5A3D', fontSize:'15px', fontWeight:'600', margin:'0 0 4px' }}>
-          입맛으로 찾는 맛집 지도
-        </p>
-        <p style={{ color:'#999', fontSize:'13px', margin:0 }}>
-          Where Your Taste Belongs
-        </p>
-      </div>
+      
 
       {/* 로그인 카드 */}
       <div style={{ background:'white', borderRadius:'28px', padding:'32px 24px', width:'100%', maxWidth:'360px', boxShadow:'0 8px 32px rgba(255,90,61,0.12)', position:'relative', zIndex:1 }}>
