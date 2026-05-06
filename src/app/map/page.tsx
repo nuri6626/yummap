@@ -286,10 +286,19 @@ export default function MapPage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
             <button
-              onClick={() => router.push(`/review/write?store_id=${selectedStore.id}&store_name=${encodeURIComponent(selectedStore.name)}`)}
-              style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-              ✏️ 리뷰 작성
-            </button>
+  onClick={() => router.push(
+    `/review/write?store_id=${selectedStore.id}` +
+    `&store_name=${encodeURIComponent(selectedStore.name)}` +
+    `&store_address=${encodeURIComponent(selectedStore.address || '')}` +
+    `&store_category=${encodeURIComponent(selectedStore.category || '')}` +
+    `&store_lat=${selectedStore.latitude}` +
+    `&store_lng=${selectedStore.longitude}` +
+    `&store_phone=${encodeURIComponent(selectedStore.phone || '')}`
+  )}
+  style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+  ✏️ 리뷰 작성
+</button>
+
             <button
               onClick={() => router.push(`/store/${selectedStore.id}`)}
               style={{ flex: 1, background: '#F2F2F2', color: '#1A1A1A', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
