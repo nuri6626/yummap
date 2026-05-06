@@ -15,10 +15,6 @@ interface Store {
   latitude: number
   longitude: number
   phone?: string
-  business_hours?: string
-  editor_score?: number
-  user_score?: number
-  review_count?: number
   isKakao?: boolean
   isSearchResult?: boolean
 }
@@ -37,10 +33,10 @@ export default function MapPage() {
   const [activeCategory, setActiveCategory] = useState('전체')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [isSearchMode, setIsSearchMode] = useState(false)
+  const [savedIds, setSavedIds] = useState<string[]>([])
 
   const CATEGORIES = ['전체', '한식', '일식', '중식', '양식', '고기', '카페', '분식', '해산물', '디저트']
 
-  // 1단계: 사용자 위치
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -52,7 +48,6 @@ export default function MapPage() {
     }
   }, [])
 
-  // 2단계: 카카오맵 초기화
   useEffect(() => {
     if (!userLocation) return
     const initMap = () => {
@@ -72,11 +67,21 @@ export default function MapPage() {
     initMap()
   }, [userLocation])
 
-  // 3단계: 주변 음식점 검색
   useEffect(() => {
     if (!mapReady || !userLocation) return
     searchNearbyStores(userLocation.lat, userLocation.lng, activeCategory)
+    loadSavedIds()
   }, [mapReady, userLocation])
+
+  const loadSavedIds = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data } = await supabase
+      .from('saved_stores')
+      .select('store_id')
+      .eq('user_id', user.id)
+    setSavedIds((data || []).map((s: any) => s.store_id))
+  }
 
   const searchNearbyStores = async (lat: number, lng: number, category: string) => {
     const keyword = category === '전체' ? '음식점' : category
@@ -109,7 +114,6 @@ export default function MapPage() {
     }
   }
 
-  // 키워드 검색 - 정확히 해당 키워드만
   const searchByKeyword = async () => {
     if (!searchKeyword.trim() || !userLocation) return
     const REST_API_KEY = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY
@@ -120,7 +124,6 @@ export default function MapPage() {
       )
       const data = await response.json()
       if (data.documents) {
-        // 검색어가 가게 이름에 포함된 것만 필터링
         const filtered = data.documents.filter((doc: any) =>
           doc.place_name.includes(searchKeyword) ||
           doc.category_name.includes(searchKeyword)
@@ -143,20 +146,15 @@ export default function MapPage() {
             new window.kakao.maps.LatLng(results[0].latitude, results[0].longitude)
           )
         }
-        if (results.length === 0) {
-          alert('검색 결과가 없습니다. 다른 키워드로 검색해보세요.')
-        }
+        if (results.length === 0) alert('검색 결과가 없습니다.')
       }
     } catch (err) {
       console.error('검색 오류:', err)
     }
   }
 
-  // 4단계: 마커 표시
   useEffect(() => {
     if (!mapReady || !kakaoMapRef.current) return
-
-    // 기존 오버레이 제거
     overlaysRef.current.forEach(o => o.setMap(null))
     overlaysRef.current = []
 
@@ -179,10 +177,7 @@ export default function MapPage() {
         cursor: pointer;
         user-select: none;
       `
-
-      content.addEventListener('click', () => {
-        setSelectedStore(store)
-      })
+      content.addEventListener('click', () => setSelectedStore(store))
 
       const overlay = new window.kakao.maps.CustomOverlay({
         position,
@@ -208,6 +203,40 @@ export default function MapPage() {
     if (userLocation) searchNearbyStores(userLocation.lat, userLocation.lng, '전체')
   }
 
+  const handleSave = async () => {
+    if (!selectedStore) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/login'); return }
+
+    const isSaved = savedIds.includes(String(selectedStore.id))
+
+    if (isSaved) {
+      await supabase.from('saved_stores')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('store_id', String(selectedStore.id))
+      setSavedIds(prev => prev.filter(id => id !== String(selectedStore.id)))
+      alert('저장이 취소되었습니다.')
+    } else {
+      const { error } = await supabase.from('saved_stores').insert({
+        user_id: user.id,
+        store_id: String(selectedStore.id),
+        store_name: selectedStore.name,
+        store_category: selectedStore.category,
+        store_address: selectedStore.address,
+        store_lat: selectedStore.latitude,
+        store_lng: selectedStore.longitude,
+        store_phone: selectedStore.phone || '',
+      })
+      if (error) {
+        alert('저장 오류: ' + error.message)
+      } else {
+        setSavedIds(prev => [...prev, String(selectedStore.id)])
+        alert('❤️ 저장되었습니다!')
+      }
+    }
+  }
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
       {/* 헤더 */}
@@ -221,14 +250,10 @@ export default function MapPage() {
 
       {/* 검색창 */}
       <div style={{ padding: '10px 16px', background: 'white', borderBottom: '1px solid #F2F2F2', display: 'flex', gap: '8px' }}>
-        <input
-          type="text"
-          placeholder="🔍 맛집 이름으로 검색..."
-          value={searchKeyword}
+        <input type="text" placeholder="🔍 맛집 이름으로 검색..." value={searchKeyword}
           onChange={e => setSearchKeyword(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && searchByKeyword()}
-          style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #F2F2F2', fontSize: '14px', outline: 'none' }}
-        />
+          style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #F2F2F2', fontSize: '14px', outline: 'none' }} />
         <button onClick={searchByKeyword}
           style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '10px 16px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
           검색
@@ -254,8 +279,6 @@ export default function MapPage() {
       {/* 지도 */}
       <div style={{ flex: 1, position: 'relative' }}>
         <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
-
-        {/* 내 위치 버튼 */}
         <button onClick={() => {
           if (userLocation && kakaoMapRef.current) {
             kakaoMapRef.current.setCenter(new window.kakao.maps.LatLng(userLocation.lat, userLocation.lng))
@@ -265,8 +288,6 @@ export default function MapPage() {
           style={{ position: 'absolute', bottom: '20px', right: '16px', background: 'white', border: '1px solid #eee', borderRadius: '50%', width: '44px', height: '44px', fontSize: '20px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', zIndex: 5 }}>
           📍
         </button>
-
-        {/* 상태 뱃지 */}
         <div style={{ position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)', background: isSearchMode ? '#FF5A3D' : 'rgba(0,0,0,0.7)', color: 'white', borderRadius: '20px', padding: '4px 14px', fontSize: '12px', fontWeight: '600', zIndex: 5 }}>
           {isSearchMode ? `"${searchKeyword}" 검색결과 ${stores.length}개` : `주변 ${stores.length}개 맛집`}
         </div>
@@ -274,59 +295,41 @@ export default function MapPage() {
 
       {/* 선택된 가게 카드 */}
       {selectedStore && (
-  <div style={{ background: 'white', borderRadius: '20px 20px 0 0', padding: '20px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)', maxHeight: '40vh', overflowY: 'auto' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-      <div>
-        <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>{selectedStore.category}</span>
-        <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#1A1A1A', margin: '6px 0 4px' }}>{selectedStore.name}</h3>
-        <p style={{ color: '#999', fontSize: '13px', margin: '0 0 2px' }}>📍 {selectedStore.address}</p>
-        {selectedStore.phone && <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>📞 {selectedStore.phone}</p>}
-      </div>
-      <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
-    </div>
-    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-      <button
-        onClick={async () => {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) { router.push('/login'); return }
-          const { error } = await supabase.from('saved_stores').upsert({
-            user_id: user.id,
-            store_id: selectedStore.id,
-            store_name: selectedStore.name,
-            store_category: selectedStore.category,
-            store_address: selectedStore.address,
-            store_lat: selectedStore.latitude,
-            store_lng: selectedStore.longitude,
-            store_phone: selectedStore.phone || '',
-          }, { onConflict: 'user_id,store_id' })
-          if (error) { alert('저장 오류: ' + error.message) }
-          else { alert('❤️ 저장되었습니다!') }
-        }}
-        style={{ background: '#FFE7DF', color: '#FF5A3D', border: 'none', borderRadius: '12px', padding: '12px 16px', fontSize: '20px', cursor: 'pointer' }}>
-        ❤️
-      </button>
-      <button
-        onClick={() => router.push(
-          `/review/write?store_id=${selectedStore.id}` +
-          `&store_name=${encodeURIComponent(selectedStore.name)}` +
-          `&store_address=${encodeURIComponent(selectedStore.address || '')}` +
-          `&store_category=${encodeURIComponent(selectedStore.category || '')}` +
-          `&store_lat=${selectedStore.latitude}` +
-          `&store_lng=${selectedStore.longitude}` +
-          `&store_phone=${encodeURIComponent(selectedStore.phone || '')}`
-        )}
-        style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-        ✏️ 리뷰 작성
-      </button>
-      <button
-        onClick={() => router.push(`/store/${selectedStore.id}`)}
-        style={{ flex: 1, background: '#F2F2F2', color: '#1A1A1A', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-        상세 보기
-      </button>
-    </div>
-  </div>
-)}
-
+        <div style={{ background: 'white', borderRadius: '20px 20px 0 0', padding: '20px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)', maxHeight: '40vh', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+            <div>
+              <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>{selectedStore.category}</span>
+              <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#1A1A1A', margin: '6px 0 4px' }}>{selectedStore.name}</h3>
+              <p style={{ color: '#999', fontSize: '13px', margin: '0 0 2px' }}>📍 {selectedStore.address}</p>
+              {selectedStore.phone && <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>📞 {selectedStore.phone}</p>}
+            </div>
+            <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+            <button onClick={handleSave}
+              style={{ background: savedIds.includes(String(selectedStore.id)) ? '#FF5A3D' : '#FFE7DF', color: savedIds.includes(String(selectedStore.id)) ? 'white' : '#FF5A3D', border: 'none', borderRadius: '12px', padding: '12px 16px', fontSize: '20px', cursor: 'pointer' }}>
+              ❤️
+            </button>
+            <button
+              onClick={() => router.push(
+                `/review/write?store_id=${selectedStore.id}` +
+                `&store_name=${encodeURIComponent(selectedStore.name)}` +
+                `&store_address=${encodeURIComponent(selectedStore.address || '')}` +
+                `&store_category=${encodeURIComponent(selectedStore.category || '')}` +
+                `&store_lat=${selectedStore.latitude}` +
+                `&store_lng=${selectedStore.longitude}` +
+                `&store_phone=${encodeURIComponent(selectedStore.phone || '')}`
+              )}
+              style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              ✏️ 리뷰 작성
+            </button>
+            <button onClick={() => router.push(`/store/${selectedStore.id}`)}
+              style={{ flex: 1, background: '#F2F2F2', color: '#1A1A1A', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              상세 보기
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 하단 네비게이션 */}
       <div style={{ display: 'flex', justifyContent: 'space-around', padding: '12px 0 20px', background: 'white', borderTop: '1px solid #F2F2F2' }}>
