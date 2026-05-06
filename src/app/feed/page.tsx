@@ -1,214 +1,200 @@
 'use client'
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
-const DUMMY_FEED = [
-  {
-    id: '1',
-    user: { nickname: '맛집탐험가김철수', grade: '⭐ 얌슐랭 1스타', avatar: '👨‍🍳' },
-    store: { name: '진짜 맛있는 김치찌개', category: '한식', address: '서울 강남구 역삼동' },
-    menu: '김치찌개', taste_score: 4.5, portion_score: 4.0, value_score: 4.2,
-    spiciness: 6, saltiness: 5,
-    content: '진짜 오랜만에 제대로 된 김치찌개 먹었어요. 돼지고기가 듬뿍 들어있고 김치가 딱 알맞게 익어서 국물이 깊었습니다. 밥도 무한리필이라 가성비 최고!',
-    photos: ['🍲'], likes: 42, comments: 8, liked: false, saved: false, time: '2시간 전',
-  },
-  {
-    id: '2',
-    user: { nickname: '라멘마니아박지영', grade: '🍱 미식 큐레이터', avatar: '👩‍🍳' },
-    store: { name: '숨은 맛집 라멘', category: '일식', address: '서울 강남구 논현동' },
-    menu: '특제 돈코츠 라멘', taste_score: 4.8, portion_score: 3.5, value_score: 3.8,
-    spiciness: 3, saltiness: 7,
-    content: '국물이 진짜 진하고 깊어요. 면 삶는 정도도 딱 알맞고 차슈도 부드럽습니다. 다만 양이 조금 적은 편이라 곱빼기 추천해요!',
-    photos: ['🍜'], likes: 87, comments: 15, liked: true, saved: true, time: '5시간 전',
-  },
-  {
-    id: '3',
-    user: { nickname: '전통맛집수호자', grade: '🍜 맛집 탐험가', avatar: '🧑‍🍳' },
-    store: { name: '할머니 손맛 국밥', category: '한식', address: '서울 강남구 삼성동' },
-    menu: '순대국밥', taste_score: 4.6, portion_score: 4.9, value_score: 5.0,
-    spiciness: 2, saltiness: 4,
-    content: '40년 전통의 손맛이 느껴지는 곳이에요. 국물이 맑고 깔끔한데 깊은 맛이 납니다. 양도 엄청 많고 가격도 저렴해서 근처 직장인들이 항상 줄 서는 곳이에요.',
-    photos: ['🥣'], likes: 156, comments: 32, liked: false, saved: false, time: '어제',
-  },
-]
+interface Review {
+  id: string
+  user_id: string
+  store_id: string
+  taste_score: number
+  portion_score: number
+  value_score: number
+  spiciness_actual: number
+  saltiness_actual: number
+  content: string
+  like_count: number
+  created_at: string
+  stores: { name: string; category: string; address: string }
+  user_taste_profile: { nickname: string; reviewer_grade: string }
+}
 
 export default function FeedPage() {
   const router = useRouter()
-  const [feed, setFeed] = useState(DUMMY_FEED)
-  const [activeTab, setActiveTab] = useState<'following' | 'recommended'>('recommended')
+  const supabase = createClient()
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'recommend' | 'following'>('recommend')
 
-  const toggleLike = (id: string) => {
-    setFeed(prev => prev.map(item =>
-      item.id === id
-        ? { ...item, liked: !item.liked, likes: item.liked ? item.likes - 1 : item.likes + 1 }
-        : item
-    ))
-  }
+  useEffect(() => {
+    const fetchReviews = async () => {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select(`
+          *,
+          stores(name, category, address),
+          user_taste_profile(nickname, reviewer_grade)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(20)
 
-  const toggleSave = (id: string) => {
-    setFeed(prev => prev.map(item =>
-      item.id === id ? { ...item, saved: !item.saved } : item
-    ))
-  }
+      console.log('피드 데이터:', data, '오류:', error)
+      setReviews(data || [])
+      setLoading(false)
+    }
+    fetchReviews()
+  }, [])
 
-  const ScoreBar = ({ value, max = 10 }: { value: number, max?: number }) => (
-    <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-      <div className="bg-orange-400 h-1.5 rounded-full" style={{ width: `${(value / max) * 100}%` }} />
+  const ScoreBar = ({ label, value }: { label: string; value: number }) => (
+    <div style={{ marginBottom: '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+        <span style={{ fontSize: '11px', color: '#999' }}>{label}</span>
+        <span style={{ fontSize: '11px', fontWeight: '700', color: '#FF5A3D' }}>{value}/5</span>
+      </div>
+      <div style={{ background: '#F2F2F2', borderRadius: '10px', height: '4px' }}>
+        <div style={{ background: 'linear-gradient(90deg, #FF5A3D, #FF8560)', borderRadius: '10px', height: '4px', width: `${value * 20}%` }} />
+      </div>
+    </div>
+  )
+
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#FFF5F3' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '40px', marginBottom: '12px' }}>🍜</div>
+        <p style={{ color: '#FF5A3D', fontWeight: '700' }}>피드 불러오는 중...</p>
+      </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-
+    <div style={{ minHeight: '100vh', background: '#FFF5F3', fontFamily: 'Pretendard, -apple-system, sans-serif', paddingBottom: '80px' }}>
       {/* 헤더 */}
-      <div className="bg-white px-4 py-3 shadow-sm sticky top-0 z-10">
-        <div className="flex items-center justify-between mb-3">
-          <img src="/yum2.png" style={{ height:'32px' }} />
-          <button className="text-gray-400 text-xl">🔔</button>
-        </div>
-
-        {/* 탭 */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-          <button
-            onClick={() => setActiveTab('recommended')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'recommended' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500'
-            }`}
-          >
-            추천 피드
-          </button>
-          <button
-            onClick={() => setActiveTab('following')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === 'following' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500'
-            }`}
-          >
-            팔로잉
-          </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'white', borderBottom: '1px solid #F2F2F2', position: 'sticky', top: 0, zIndex: 10 }}>
+        <img src="/yum2.png" alt="yummap" style={{ height: '32px' }} />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer' }}>🔔</button>
+          <button style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer' }}>🔍</button>
         </div>
       </div>
 
-      {/* 피드 리스트 */}
-      <div className="flex-1 px-4 py-4 space-y-4 max-w-md mx-auto w-full">
-        {feed.map(item => (
-          <div key={item.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-
-            {/* 유저 정보 */}
-            <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-xl">
-                  {item.user.avatar}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-800 text-sm">{item.user.nickname}</p>
-                  <p className="text-xs text-orange-500">{item.user.grade}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{item.time}</span>
-                <button className="text-gray-300">•••</button>
-              </div>
-            </div>
-
-            {/* 가게 정보 */}
-            <div className="px-4 pb-3">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs bg-orange-100 text-orange-500 px-2 py-0.5 rounded-full">
-                  {item.store.category}
-                </span>
-                <span className="text-xs text-gray-400">{item.store.address}</span>
-              </div>
-              <h3 className="font-bold text-gray-800">📍 {item.store.name}</h3>
-              <p className="text-sm text-orange-500 font-medium mt-0.5">🍽️ {item.menu}</p>
-            </div>
-
-            {/* 사진 */}
-            <div className="bg-orange-50 h-48 flex items-center justify-center text-7xl">
-              {item.photos[0]}
-            </div>
-
-            {/* 평점 */}
-            <div className="px-4 py-3 border-b border-gray-50">
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                {[
-                  { label: '맛', score: item.taste_score },
-                  { label: '양', score: item.portion_score },
-                  { label: '가성비', score: item.value_score },
-                ].map(({ label, score }) => (
-                  <div key={label} className="text-center">
-                    <p className="text-xs text-gray-400 mb-1">{label}</p>
-                    <p className="font-bold text-orange-500">⭐ {score}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 w-12">🌶️ 맵기</span>
-                  <ScoreBar value={item.spiciness} />
-                  <span className="text-xs text-gray-500 w-6">{item.spiciness}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 w-12">🧂 짠기</span>
-                  <ScoreBar value={item.saltiness} />
-                  <span className="text-xs text-gray-500 w-6">{item.saltiness}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 리뷰 내용 */}
-            <div className="px-4 py-3 border-b border-gray-50">
-              <p className="text-sm text-gray-700 leading-relaxed">{item.content}</p>
-            </div>
-
-            {/* 액션 버튼 */}
-            <div className="px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <button onClick={() => toggleLike(item.id)} className="flex items-center gap-1">
-                  <span className={`text-xl ${item.liked ? 'text-red-500' : 'text-gray-300'}`}>♥</span>
-                  <span className="text-sm text-gray-500">{item.likes}</span>
-                </button>
-                <button className="flex items-center gap-1">
-                  <span className="text-xl text-gray-300">💬</span>
-                  <span className="text-sm text-gray-500">{item.comments}</span>
-                </button>
-              </div>
-              <button
-                onClick={() => toggleSave(item.id)}
-                className={`text-xl ${item.saved ? 'text-orange-500' : 'text-gray-300'}`}
-              >
-                🗂️
-              </button>
-            </div>
-
-          </div>
+      {/* 탭 */}
+      <div style={{ display: 'flex', background: 'white', borderBottom: '1px solid #F2F2F2' }}>
+        {[
+          { key: 'recommend', label: '추천 피드' },
+          { key: 'following', label: '팔로잉' },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
+            style={{ flex: 1, padding: '14px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: '700', background: 'white', color: activeTab === tab.key ? '#FF5A3D' : '#999', borderBottom: activeTab === tab.key ? '2px solid #FF5A3D' : '2px solid transparent' }}>
+            {tab.label}
+          </button>
         ))}
       </div>
 
-      {/* 하단 네비게이션 */}
-      <div className="bg-white border-t border-gray-100 px-4 py-2 flex justify-around sticky bottom-0">
-        <button onClick={() => router.push('/map')} className="flex flex-col items-center gap-1 text-gray-400">
-          <span className="text-2xl">🗺️</span>
-          <span className="text-xs">지도</span>
-        </button>
-        <button className="flex flex-col items-center gap-1 text-orange-500">
-          <span className="text-2xl">📰</span>
-          <span className="text-xs font-medium">피드</span>
-        </button>
-        <button onClick={() => router.push('/review/write')} className="flex flex-col items-center gap-1 text-gray-400">
-          <span className="text-2xl">✏️</span>
-          <span className="text-xs">리뷰</span>
-        </button>
-        <button onClick={() => router.push('/saved')} className="flex flex-col items-center gap-1 text-gray-400">
-          <span className="text-2xl">🗂️</span>
-          <span className="text-xs">저장</span>
-        </button>
-        <button onClick={() => router.push('/profile')} className="flex flex-col items-center gap-1 text-gray-400">
-          <span className="text-2xl">👤</span>
-          <span className="text-xs">프로필</span>
-        </button>
+      {/* 피드 내용 */}
+      <div style={{ padding: '12px 16px' }}>
+        {reviews.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🍽️</div>
+            <p style={{ color: '#999', fontSize: '16px', fontWeight: '600' }}>아직 리뷰가 없어요</p>
+            <p style={{ color: '#bbb', fontSize: '13px', marginBottom: '20px' }}>첫 번째 리뷰를 작성해보세요!</p>
+            <button onClick={() => router.push('/map')}
+              style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px 24px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              맛집 찾으러 가기
+            </button>
+          </div>
+        ) : (
+          reviews.map(review => (
+            <div key={review.id} style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              {/* 유저 정보 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #FF5A3D, #FF8560)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                    👤
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '14px', fontWeight: '800', color: '#1A1A1A', margin: 0 }}>
+                      {review.user_taste_profile?.nickname || '익명'}
+                    </p>
+                    <p style={{ fontSize: '11px', color: '#FF5A3D', margin: 0, fontWeight: '600' }}>
+                      {review.user_taste_profile?.reviewer_grade || '맛집 탐험가'}
+                    </p>
+                  </div>
+                </div>
+                <span style={{ fontSize: '11px', color: '#bbb' }}>
+                  {new Date(review.created_at).toLocaleDateString('ko-KR')}
+                </span>
+              </div>
+
+              {/* 가게 정보 */}
+              <div style={{ background: '#FFF5F3', borderRadius: '12px', padding: '12px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>
+                    {review.stores?.category}
+                  </span>
+                </div>
+                <p style={{ fontSize: '16px', fontWeight: '900', color: '#1A1A1A', margin: '4px 0 2px' }}>
+                  {review.stores?.name}
+                </p>
+                <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>📍 {review.stores?.address}</p>
+              </div>
+
+              {/* 점수 */}
+              <div style={{ marginBottom: '12px' }}>
+                <ScoreBar label="맛" value={review.taste_score} />
+                <ScoreBar label="양" value={review.portion_score} />
+                <ScoreBar label="가성비" value={review.value_score} />
+              </div>
+
+              {/* 맵기/짠기 */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <div style={{ background: '#FFF5F3', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', color: '#FF5A3D' }}>
+                  🌶️ 맵기 {review.spiciness_actual}/10
+                </div>
+                <div style={{ background: '#F0F8FF', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', color: '#4A90E2' }}>
+                  🧂 짠기 {review.saltiness_actual}/10
+                </div>
+              </div>
+
+              {/* 리뷰 내용 */}
+              <p style={{ fontSize: '14px', color: '#444', lineHeight: '1.6', margin: '0 0 12px' }}>
+                {review.content}
+              </p>
+
+              {/* 좋아요 버튼 */}
+              <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid #F2F2F2', paddingTop: '12px' }}>
+                <button style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: '13px', fontWeight: '600' }}>
+                  ❤️ {review.like_count || 0}
+                </button>
+                <button style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#999', fontSize: '13px', fontWeight: '600' }}>
+                  💬 댓글
+                </button>
+                <button
+                  onClick={() => router.push(`/review/write?store_id=${review.store_id}&store_name=${encodeURIComponent(review.stores?.name || '')}`)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#FF5A3D', fontSize: '13px', fontWeight: '600', marginLeft: 'auto' }}>
+                  ✏️ 나도 리뷰
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
+      {/* 하단 네비게이션 */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-around', padding: '12px 0 20px', background: 'white', borderTop: '1px solid #F2F2F2' }}>
+        {[
+          { icon: '🗺️', label: '지도', path: '/map' },
+          { icon: '📰', label: '피드', path: '/feed', active: true },
+          { icon: '✏️', label: '리뷰', path: '/review/write' },
+          { icon: '❤️', label: '저장', path: '/saved' },
+          { icon: '👤', label: '프로필', path: '/profile' },
+        ].map(item => (
+          <button key={item.path} onClick={() => router.push(item.path)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <span style={{ fontSize: '22px' }}>{item.icon}</span>
+            <span style={{ fontSize: '10px', fontWeight: '600', color: (item as any).active ? '#FF5A3D' : '#999' }}>{item.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
