@@ -105,10 +105,12 @@ export default function SavedPage() {
                       ✏️ 리뷰 작성
                     </button>
                     <button
-                      onClick={() => router.push(`/map`)}
-                      style={{ background: '#F2F2F2', color: '#666', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                      🗺️ 지도
-                    </button>
+  onClick={() => router.push(`/map?lat=${store.store_lat}&lng=${store.store_lng}&name=${encodeURIComponent(store.store_name)}`)}
+  style={{ background: '#F2F2F2', color: '#666', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+  🗺️ 지도에서 보기
+</button>
+
+
                   </div>
                 </div>
                 <button onClick={() => handleDelete(store.id)}
