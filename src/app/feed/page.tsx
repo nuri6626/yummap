@@ -64,7 +64,7 @@ export default function FeedPage() {
       {/* 헤더 */}
       <div className="bg-white px-4 py-3 shadow-sm sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
-          <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
+          <img src="/yum2.png" style={{ height:'32px' }} />
           <button className="text-gray-400 text-xl">🔔</button>
         </div>
 

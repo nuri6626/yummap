@@ -79,10 +79,10 @@ export default function OnboardingPage() {
     <div style={{ minHeight:'100vh', background:'#F2F2F2', fontFamily:'Pretendard, -apple-system, sans-serif' }}>
 
       {/* 헤더 */}
-      <div style={{ background:'white', padding:'16px 20px', display:'flex', alignItems:'center', gap:'10px', boxShadow:'0 1px 0 #eee' }}>
-        <YumLogo />
-        <span style={{ fontSize:'20px', fontWeight:'900', color:'#1A1A1A', letterSpacing:'-0.5px' }}>yummap</span>
-      </div>
+    <div style={{ display:'flex', alignItems:'center' }}>
+  <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
+</div>
+
 
       {/* 진행 바 */}
       <div style={{ background:'white', padding:'16px 20px 0' }}>

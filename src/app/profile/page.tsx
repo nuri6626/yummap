@@ -65,7 +65,7 @@ export default function ProfilePage() {
 
       {/* 헤더 */}
       <div style={{ background:'white', padding:'16px', display:'flex', alignItems:'center', justifyContent:'space-between', boxShadow:'0 1px 0 #eee' }}>
-        <img src="/yum2.png" alt="yummap" style={{ height:'32px' }} />
+        <img src="/yum2.png" style={{ height:'32px' }} />
         <button style={{ background:'none', border:'none', fontSize:'22px', cursor:'pointer' }}>⚙️</button>
       </div>
 
