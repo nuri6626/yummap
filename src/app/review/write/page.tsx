@@ -1,353 +1,214 @@
 'use client'
-
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-
-const MENU_EXAMPLES = ['김치찌개', '제육볶음', '된장찌개', '비빔밥', '삼겹살']
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 export default function ReviewWritePage() {
   const router = useRouter()
-  const [step, setStep] = useState(1)
+  const searchParams = useSearchParams()
+  const supabase = createClient()
 
-  // 가게 정보
-  const [storeName, setStoreName] = useState('')
+  const storeId = searchParams.get('store_id')
+  const storeName = searchParams.get('store_name')
 
-  // 메뉴 정보
-  const [menuName, setMenuName] = useState('')
-  const [tasteScore, setTasteScore] = useState(0)
-  const [portionScore, setPortionScore] = useState(0)
-  const [valueScore, setValueScore] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [tasteScore, setTasteScore] = useState(3)
+  const [portionScore, setPortionScore] = useState(3)
+  const [valueScore, setValueScore] = useState(3)
   const [spiciness, setSpiciness] = useState(5)
   const [saltiness, setSaltiness] = useState(5)
-
-  // 리뷰 내용
   const [content, setContent] = useState('')
-  const [photos, setPhotos] = useState<string[]>([])
+  const [menuName, setMenuName] = useState('')
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files) return
-    const urls = Array.from(files).map(file => URL.createObjectURL(file))
-    setPhotos(prev => [...prev, ...urls])
-  }
+  const ScoreButton = ({ value, current, onClick }: { value: number, current: number, onClick: (v: number) => void }) => (
+    <div style={{ display: 'flex', gap: '6px' }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} onClick={() => onClick(n)}
+          style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: '18px', background: n <= current ? '#FF5A3D' : '#F2F2F2', color: n <= current ? 'white' : '#999', fontWeight: '700', transition: 'all 0.2s' }}>
+          {n}
+        </button>
+      ))}
+    </div>
+  )
 
-  const handleSubmit = () => {
-    // 나중에 Supabase 저장 연결
-    alert('리뷰가 등록되었습니다! 🎉')
-    router.push('/map')
-  }
-
-  // 별점 컴포넌트
-  const StarRating = ({
-    value,
-    onChange,
-    label
-  }: {
-    value: number
-    onChange: (v: number) => void
-    label: string
+  const SliderRow = ({ label, value, onChange, leftLabel, rightLabel }: {
+    label: string, value: number, onChange: (v: number) => void, leftLabel: string, rightLabel: string
   }) => (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-600">{label}</span>
-      <div className="flex gap-1">
-        {[1, 2, 3, 4, 5].map(star => (
-          <button
-            key={star}
-            onClick={() => onChange(star)}
-            className={`text-2xl transition-all ${
-              star <= value ? 'text-yellow-400' : 'text-gray-200'
-            }`}
-          >
-            ★
-          </button>
-        ))}
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+        <span style={{ fontSize: '14px', fontWeight: '600', color: '#1A1A1A' }}>{label}</span>
+        <span style={{ fontSize: '14px', fontWeight: '700', color: '#FF5A3D' }}>{value}</span>
+      </div>
+      <input type="range" min={1} max={10} value={value} onChange={e => onChange(Number(e.target.value))}
+        style={{ width: '100%', accentColor: '#FF5A3D' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+        <span style={{ fontSize: '11px', color: '#999' }}>{leftLabel}</span>
+        <span style={{ fontSize: '11px', color: '#999' }}>{rightLabel}</span>
       </div>
     </div>
   )
 
+  const handleSubmit = async () => {
+    if (!content.trim()) { alert('리뷰 내용을 입력해주세요'); return }
+    if (!storeId) { alert('가게 정보가 없습니다'); return }
+    setLoading(true)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/login'); return }
+
+      // 최초 리뷰 여부 확인
+      const { data: existingReviews } = await supabase
+        .from('reviews')
+        .select('id')
+        .eq('store_id', storeId)
+
+      const isFirstReview = !existingReviews || existingReviews.length === 0
+
+      // 리뷰 저장
+      const { error: reviewError } = await supabase.from('reviews').insert({
+        user_id: user.id,
+        store_id: storeId,
+        taste_score: tasteScore,
+        portion_score: portionScore,
+        value_score: valueScore,
+        spiciness_actual: spiciness,
+        saltiness_actual: saltiness,
+        content: content.trim(),
+        photos: [],
+        visit_verified: false,
+        quality_score: (tasteScore + portionScore + valueScore) / 3,
+      })
+
+      if (reviewError) {
+        console.error('리뷰 저장 오류:', reviewError)
+        alert('리뷰 저장 오류: ' + reviewError.message)
+        setLoading(false)
+        return
+      }
+
+      // stores 테이블 review_count 업데이트
+      await supabase.rpc('increment_review_count', { store_id_input: storeId })
+
+      // 최초 리뷰면 배지 부여
+      if (isFirstReview) {
+        const { data: profile } = await supabase
+          .from('user_taste_profile')
+          .select('badges')
+          .eq('user_id', user.id)
+          .single()
+
+        const currentBadges = profile?.badges || []
+        const newBadge = {
+          id: 'first_review',
+          name: '최초 등록자',
+          emoji: '🥇',
+          store: storeName,
+          earned_at: new Date().toISOString()
+        }
+
+        if (!currentBadges.find((b: any) => b.id === 'first_review' && b.store === storeName)) {
+          await supabase
+            .from('user_taste_profile')
+            .update({ badges: [...currentBadges, newBadge] })
+            .eq('user_id', user.id)
+
+          alert(`🥇 축하합니다! "${storeName}" 최초 리뷰 등록자 배지를 획득했습니다!`)
+        }
+      }
+
+      alert('리뷰가 등록되었습니다! 🎉')
+      router.push('/map')
+
+    } catch (err) {
+      console.error(err)
+      alert('오류가 발생했습니다')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-
+    <div style={{ minHeight: '100vh', background: '#FFF5F3', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
       {/* 헤더 */}
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button
-          onClick={() => step > 1 ? setStep(step - 1) : router.back()}
-          className="text-gray-500 text-xl"
-        >
-          ←
-        </button>
-        <h1 className="text-lg font-bold text-gray-800">리뷰 작성</h1>
-        <div className="flex-1" />
-        <span className="text-sm text-gray-400">{step}/3</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: 'white', borderBottom: '1px solid #F2F2F2', position: 'sticky', top: 0, zIndex: 10 }}>
+        <button onClick={() => router.back()} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>←</button>
+        <img src="/yum2.png" alt="yummap" style={{ height: '28px' }} />
+        <span style={{ fontSize: '16px', fontWeight: '800', color: '#1A1A1A' }}>리뷰 작성</span>
       </div>
 
-      {/* 진행 바 */}
-      <div className="bg-white px-4 pb-3">
-        <div className="flex gap-1">
-          {[1, 2, 3].map(i => (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full transition-all ${
-                i <= step ? 'bg-orange-400' : 'bg-gray-200'
-              }`}
-            />
-          ))}
+      <div style={{ padding: '16px', maxWidth: '480px', margin: '0 auto' }}>
+
+        {/* 가게 이름 */}
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '28px' }}>🏪</span>
+            <div>
+              <p style={{ fontSize: '12px', color: '#999', margin: '0 0 2px' }}>리뷰 작성 중인 가게</p>
+              <p style={{ fontSize: '18px', fontWeight: '900', color: '#FF5A3D', margin: 0 }}>
+                {storeName || '가게 이름 없음'}
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
+        {/* 메뉴 이름 */}
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <p style={{ fontSize: '14px', fontWeight: '700', color: '#1A1A1A', margin: '0 0 10px' }}>🍽️ 드신 메뉴</p>
+          <input
+            type="text"
+            placeholder="예: 짬뽕, 탕수육..."
+            value={menuName}
+            onChange={e => setMenuName(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #F2F2F2', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+          />
+        </div>
 
-        {/* Step 1 — 가게 선택 */}
-        {step === 1 && (
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1">
-              어느 맛집에 다녀오셨나요? 📍
-            </h2>
-            <p className="text-gray-400 text-sm mb-6">
-              방문한 가게를 검색해주세요
-            </p>
+        {/* 점수 */}
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <p style={{ fontSize: '14px', fontWeight: '700', color: '#1A1A1A', margin: '0 0 16px' }}>⭐ 점수 평가</p>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                가게 이름
-              </label>
-              <input
-                type="text"
-                value={storeName}
-                onChange={e => setStoreName(e.target.value)}
-                placeholder="가게 이름을 입력하세요"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:border-orange-400"
-              />
-            </div>
-
-            {/* 최근 방문 더미 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <p className="text-sm font-medium text-gray-700 mb-3">
-                최근 방문 맛집
-              </p>
-              {['진짜 맛있는 김치찌개', '숨은 맛집 라멘', '할머니 손맛 국밥'].map(name => (
-                <button
-                  key={name}
-                  onClick={() => setStoreName(name)}
-                  className={`w-full text-left px-4 py-3 rounded-xl mb-2 text-sm transition-all ${
-                    storeName === name
-                      ? 'bg-orange-50 text-orange-500 font-medium'
-                      : 'bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  📍 {name}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setStep(2)}
-              disabled={storeName.length < 1}
-              className="w-full mt-6 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-4 rounded-2xl transition-all"
-            >
-              다음
-            </button>
+          <div style={{ marginBottom: '14px' }}>
+            <p style={{ fontSize: '13px', color: '#666', margin: '0 0 8px', fontWeight: '600' }}>맛</p>
+            <ScoreButton value={tasteScore} current={tasteScore} onClick={setTasteScore} />
           </div>
-        )}
 
-        {/* Step 2 — 메뉴 평가 */}
-        {step === 2 && (
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1">
-              메뉴를 평가해주세요 🍽️
-            </h2>
-            <p className="text-gray-400 text-sm mb-6">
-              {storeName}에서 드신 메뉴는요?
-            </p>
-
-            {/* 메뉴 입력 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                드신 메뉴
-              </label>
-              <input
-                type="text"
-                value={menuName}
-                onChange={e => setMenuName(e.target.value)}
-                placeholder="메뉴 이름을 입력하세요"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:border-orange-400 mb-3"
-              />
-              {/* 메뉴 예시 */}
-              <div className="flex flex-wrap gap-2">
-                {MENU_EXAMPLES.map(menu => (
-                  <button
-                    key={menu}
-                    onClick={() => setMenuName(menu)}
-                    className={`px-3 py-1 rounded-full text-xs transition-all ${
-                      menuName === menu
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {menu}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 별점 평가 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-sm font-bold text-gray-700 mb-4">별점 평가</p>
-              <div className="space-y-4">
-                <StarRating value={tasteScore} onChange={setTasteScore} label="🍴 맛" />
-                <StarRating value={portionScore} onChange={setPortionScore} label="🍱 양" />
-                <StarRating value={valueScore} onChange={setValueScore} label="💰 가성비" />
-              </div>
-            </div>
-
-            {/* 맵기/짠기 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-sm font-bold text-gray-700 mb-4">실제 맵기 & 짠기</p>
-
-              <div className="mb-4">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-600">🌶️ 맵기</span>
-                  <span className="text-orange-500 font-bold">{spiciness}/10</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-1">
-                  <span>안매움</span>
-                  <span>매우 매움</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={spiciness}
-                  onChange={e => setSpiciness(Number(e.target.value))}
-                  className="w-full accent-orange-500"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-gray-600">🧂 짠기</span>
-                  <span className="text-orange-500 font-bold">{saltiness}/10</span>
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mb-1">
-                  <span>안짬</span>
-                  <span>매우 짬</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  value={saltiness}
-                  onChange={e => setSaltiness(Number(e.target.value))}
-                  className="w-full accent-orange-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl"
-              >
-                이전
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                disabled={menuName.length < 1 || tasteScore === 0}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-4 rounded-2xl transition-all"
-              >
-                다음
-              </button>
-            </div>
+          <div style={{ marginBottom: '14px' }}>
+            <p style={{ fontSize: '13px', color: '#666', margin: '0 0 8px', fontWeight: '600' }}>양</p>
+            <ScoreButton value={portionScore} current={portionScore} onClick={setPortionScore} />
           </div>
-        )}
 
-        {/* Step 3 — 리뷰 작성 */}
-        {step === 3 && (
           <div>
-            <h2 className="text-xl font-bold text-gray-800 mb-1">
-              솔직한 리뷰를 남겨주세요 ✍️
-            </h2>
-            <p className="text-gray-400 text-sm mb-6">
-              다른 얌마들에게 도움이 될 거예요
-            </p>
-
-            {/* 사진 업로드 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-sm font-bold text-gray-700 mb-3">
-                📸 사진 추가
-              </p>
-              <div className="flex gap-3 overflow-x-auto">
-                <label className="flex-shrink-0 w-20 h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center cursor-pointer hover:border-orange-300 transition-all">
-                  <span className="text-2xl text-gray-300">+</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handlePhotoUpload}
-                  />
-                </label>
-                {photos.map((photo, idx) => (
-                  <div key={idx} className="flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden">
-                    <img
-                      src={photo}
-                      alt={`photo-${idx}`}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 리뷰 텍스트 */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-sm font-bold text-gray-700 mb-3">
-                💬 리뷰 작성
-              </p>
-              <textarea
-                value={content}
-                onChange={e => setContent(e.target.value)}
-                placeholder="맛은 어땠나요? 분위기, 서비스 등 솔직하게 남겨주세요 😊"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:border-orange-400 resize-none"
-                rows={5}
-                maxLength={500}
-              />
-              <p className="text-xs text-gray-400 text-right mt-1">
-                {content.length}/500
-              </p>
-            </div>
-
-            {/* 리뷰 요약 */}
-            <div className="bg-orange-50 rounded-2xl p-4 mb-6">
-              <p className="text-sm font-bold text-orange-600 mb-2">📋 리뷰 요약</p>
-              <p className="text-sm text-gray-700">📍 {storeName}</p>
-              <p className="text-sm text-gray-700">🍽️ {menuName}</p>
-              <p className="text-sm text-gray-700">
-                ⭐ 맛 {tasteScore} / 양 {portionScore} / 가성비 {valueScore}
-              </p>
-              <p className="text-sm text-gray-700">
-                🌶️ 맵기 {spiciness}/10 · 🧂 짠기 {saltiness}/10
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl"
-              >
-                이전
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={content.length < 10}
-                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 text-white font-bold py-4 rounded-2xl transition-all"
-              >
-                등록 🎉
-              </button>
-            </div>
+            <p style={{ fontSize: '13px', color: '#666', margin: '0 0 8px', fontWeight: '600' }}>가성비</p>
+            <ScoreButton value={valueScore} current={valueScore} onClick={setValueScore} />
           </div>
-        )}
+        </div>
 
+        {/* 맵기/짠기 슬라이더 */}
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <p style={{ fontSize: '14px', fontWeight: '700', color: '#1A1A1A', margin: '0 0 16px' }}>🌶️ 맛 특성</p>
+          <SliderRow label="맵기" value={spiciness} onChange={setSpiciness} leftLabel="안매움" rightLabel="매우 매움" />
+          <SliderRow label="짠기" value={saltiness} onChange={setSaltiness} leftLabel="싱거움" rightLabel="매우 짬" />
+        </div>
+
+        {/* 리뷰 내용 */}
+        <div style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <p style={{ fontSize: '14px', fontWeight: '700', color: '#1A1A1A', margin: '0 0 10px' }}>✍️ 리뷰 내용</p>
+          <textarea
+            placeholder="맛, 분위기, 서비스 등 자유롭게 작성해주세요..."
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            rows={5}
+            style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #F2F2F2', fontSize: '14px', outline: 'none', resize: 'none', boxSizing: 'border-box', lineHeight: '1.6' }}
+          />
+          <p style={{ fontSize: '12px', color: '#bbb', margin: '6px 0 0', textAlign: 'right' }}>{content.length}자</p>
+        </div>
+
+        {/* 제출 버튼 */}
+        <button onClick={handleSubmit} disabled={loading}
+          style={{ width: '100%', background: loading ? '#ccc' : 'linear-gradient(135deg, #FF5A3D, #FF8560)', color: 'white', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '16px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 16px rgba(255,90,61,0.3)', marginBottom: '32px' }}>
+          {loading ? '등록 중...' : '리뷰 등록하기 🎉'}
+        </button>
       </div>
     </div>
   )
