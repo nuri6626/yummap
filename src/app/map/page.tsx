@@ -274,39 +274,59 @@ export default function MapPage() {
 
       {/* 선택된 가게 카드 */}
       {selectedStore && (
-        <div style={{ background: 'white', borderRadius: '20px 20px 0 0', padding: '20px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)', maxHeight: '40vh', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <div>
-              <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>{selectedStore.category}</span>
-              <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#1A1A1A', margin: '6px 0 4px' }}>{selectedStore.name}</h3>
-              <p style={{ color: '#999', fontSize: '13px', margin: '0 0 2px' }}>📍 {selectedStore.address}</p>
-              {selectedStore.phone && <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>📞 {selectedStore.phone}</p>}
-            </div>
-            <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <button
-  onClick={() => router.push(
-    `/review/write?store_id=${selectedStore.id}` +
-    `&store_name=${encodeURIComponent(selectedStore.name)}` +
-    `&store_address=${encodeURIComponent(selectedStore.address || '')}` +
-    `&store_category=${encodeURIComponent(selectedStore.category || '')}` +
-    `&store_lat=${selectedStore.latitude}` +
-    `&store_lng=${selectedStore.longitude}` +
-    `&store_phone=${encodeURIComponent(selectedStore.phone || '')}`
-  )}
-  style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-  ✏️ 리뷰 작성
-</button>
+  <div style={{ background: 'white', borderRadius: '20px 20px 0 0', padding: '20px 16px', boxShadow: '0 -4px 20px rgba(0,0,0,0.1)', maxHeight: '40vh', overflowY: 'auto' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+      <div>
+        <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>{selectedStore.category}</span>
+        <h3 style={{ fontSize: '18px', fontWeight: '900', color: '#1A1A1A', margin: '6px 0 4px' }}>{selectedStore.name}</h3>
+        <p style={{ color: '#999', fontSize: '13px', margin: '0 0 2px' }}>📍 {selectedStore.address}</p>
+        {selectedStore.phone && <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>📞 {selectedStore.phone}</p>}
+      </div>
+      <button onClick={() => setSelectedStore(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✕</button>
+    </div>
+    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+      <button
+        onClick={async () => {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) { router.push('/login'); return }
+          const { error } = await supabase.from('saved_stores').upsert({
+            user_id: user.id,
+            store_id: selectedStore.id,
+            store_name: selectedStore.name,
+            store_category: selectedStore.category,
+            store_address: selectedStore.address,
+            store_lat: selectedStore.latitude,
+            store_lng: selectedStore.longitude,
+            store_phone: selectedStore.phone || '',
+          }, { onConflict: 'user_id,store_id' })
+          if (error) { alert('저장 오류: ' + error.message) }
+          else { alert('❤️ 저장되었습니다!') }
+        }}
+        style={{ background: '#FFE7DF', color: '#FF5A3D', border: 'none', borderRadius: '12px', padding: '12px 16px', fontSize: '20px', cursor: 'pointer' }}>
+        ❤️
+      </button>
+      <button
+        onClick={() => router.push(
+          `/review/write?store_id=${selectedStore.id}` +
+          `&store_name=${encodeURIComponent(selectedStore.name)}` +
+          `&store_address=${encodeURIComponent(selectedStore.address || '')}` +
+          `&store_category=${encodeURIComponent(selectedStore.category || '')}` +
+          `&store_lat=${selectedStore.latitude}` +
+          `&store_lng=${selectedStore.longitude}` +
+          `&store_phone=${encodeURIComponent(selectedStore.phone || '')}`
+        )}
+        style={{ flex: 1, background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+        ✏️ 리뷰 작성
+      </button>
+      <button
+        onClick={() => router.push(`/store/${selectedStore.id}`)}
+        style={{ flex: 1, background: '#F2F2F2', color: '#1A1A1A', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+        상세 보기
+      </button>
+    </div>
+  </div>
+)}
 
-            <button
-              onClick={() => router.push(`/store/${selectedStore.id}`)}
-              style={{ flex: 1, background: '#F2F2F2', color: '#1A1A1A', border: 'none', borderRadius: '12px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-              상세 보기
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* 하단 네비게이션 */}
       <div style={{ display: 'flex', justifyContent: 'space-around', padding: '12px 0 20px', background: 'white', borderTop: '1px solid #F2F2F2' }}>

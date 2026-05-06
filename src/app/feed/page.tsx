@@ -27,23 +27,25 @@ export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<'recommend' | 'following'>('recommend')
 
   useEffect(() => {
-    const fetchReviews = async () => {
-      const { data, error } = await supabase
-        .from('reviews')
-        .select(`
-          *,
-          stores(name, category, address),
-          user_taste_profile(nickname, reviewer_grade)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(20)
+  const fetchReviews = async () => {
+    console.log('피드 fetch 시작')
+    const { data, error } = await supabase
+      .from('reviews')
+      .select(`
+        *,
+        stores(name, category, address),
+        user_taste_profile(nickname, reviewer_grade)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(20)
 
-      console.log('피드 데이터:', data, '오류:', error)
-      setReviews(data || [])
-      setLoading(false)
-    }
-    fetchReviews()
-  }, [])
+    console.log('피드 데이터:', data, '오류:', error)
+    setReviews(data || [])
+    setLoading(false)
+  }
+  fetchReviews()
+}, [])
+
 
   const ScoreBar = ({ label, value }: { label: string; value: number }) => (
     <div style={{ marginBottom: '6px' }}>
