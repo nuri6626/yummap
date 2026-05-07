@@ -63,51 +63,49 @@ function ReviewWriteInner() {
   const supabase = createClient()
 
   /* 가게 정보 */
-  const [storeId,   setStoreId]   = useState(searchParams.get('store_id')   ?? '')
-  const [storeName, setStoreName] = useState(searchParams.get('store_name') ?? '')
-  const [address,   setAddress]   = useState(searchParams.get('store_address') ?? '')
+  const [storeId,   setStoreId]   = useState(searchParams.get('store_id')       ?? '')
+  const [storeName, setStoreName] = useState(searchParams.get('store_name')     ?? '')
+  const [address,   setAddress]   = useState(searchParams.get('store_address')  ?? '')
   const [category,  setCategory]  = useState(searchParams.get('store_category') ?? '')
-  const [lat,       setLat]       = useState(searchParams.get('store_lat') ?? '')
-  const [lng,       setLng]       = useState(searchParams.get('store_lng') ?? '')
-  const [phone,     setPhone]     = useState(searchParams.get('store_phone') ?? '')
+  const [lat,       setLat]       = useState(searchParams.get('store_lat')      ?? '')
+  const [lng,       setLng]       = useState(searchParams.get('store_lng')      ?? '')
+  const [phone,     setPhone]     = useState(searchParams.get('store_phone')    ?? '')
 
   useEffect(() => {
-    const id   = searchParams.get('store_id')       ?? ''
-    const name = searchParams.get('store_name')     ?? ''
-    const addr = searchParams.get('store_address')  ?? ''
-    const cat  = searchParams.get('store_category') ?? ''
-    const la   = searchParams.get('store_lat')      ?? ''
-    const ln   = searchParams.get('store_lng')      ?? ''
-    const ph   = searchParams.get('store_phone')    ?? ''
-    setStoreId(id); setStoreName(name); setAddress(addr)
-    setCategory(cat); setLat(la); setLng(ln); setPhone(ph)
+    setStoreId(  searchParams.get('store_id')       ?? '')
+    setStoreName(searchParams.get('store_name')     ?? '')
+    setAddress(  searchParams.get('store_address')  ?? '')
+    setCategory( searchParams.get('store_category') ?? '')
+    setLat(      searchParams.get('store_lat')      ?? '')
+    setLng(      searchParams.get('store_lng')      ?? '')
+    setPhone(    searchParams.get('store_phone')    ?? '')
   }, [searchParams])
 
   /* 리뷰 폼 상태 */
-  const [menuName,    setMenuName]    = useState('')
-  const [content,     setContent]     = useState('')
+  const [menuName,      setMenuName]      = useState('')
+  const [content,       setContent]       = useState('')
   const [oneLineReview, setOneLineReview] = useState('')
-  const [starScore,   setStarScore]   = useState(3)
-  const [wantToGoBack,setWantToGoBack]= useState<boolean|null>(null)
-  const [tasteScore,  setTasteScore]  = useState(5)
-  const [portionScore,setPortionScore]= useState(5)
-  const [valueScore,  setValueScore]  = useState(5)
-  const [spiciness,   setSpiciness]   = useState(5)
-  const [saltiness,   setSaltiness]   = useState(5)
-  const [sweetness,   setSweetness]   = useState(5)
-  const [textureTags, setTextureTags] = useState<string[]>([])
-  const [situationTags,setSituationTags]=useState<string[]>([])
-  const [compareMenu, setCompareMenu] = useState('')
-  const [compareStore,setCompareStore]= useState('')
-  const [photos,      setPhotos]      = useState<string[]>([])
-  const [uploading,   setUploading]   = useState(false)
-  const [submitting,  setSubmitting]  = useState(false)
+  const [starScore,     setStarScore]     = useState(3)
+  const [wantToGoBack,  setWantToGoBack]  = useState<boolean | null>(null)
+  const [tasteScore,    setTasteScore]    = useState(5)
+  const [portionScore,  setPortionScore]  = useState(5)
+  const [valueScore,    setValueScore]    = useState(5)
+  const [spiciness,     setSpiciness]     = useState(5)
+  const [saltiness,     setSaltiness]     = useState(5)
+  const [sweetness,     setSweetness]     = useState(5)
+  const [textureTags,   setTextureTags]   = useState<string[]>([])
+  const [situationTags, setSituationTags] = useState<string[]>([])
+  const [compareMenu,   setCompareMenu]   = useState('')
+  const [compareStore,  setCompareStore]  = useState('')
+  const [photos,        setPhotos]        = useState<string[]>([])
+  const [uploading,     setUploading]     = useState(false)
+  const [submitting,    setSubmitting]    = useState(false)
 
-  const TEXTURE_OPTIONS  = ['바삭','쫄깃','촉촉','담백','진한','고소','부드러운','매콤','달콤','새콤']
-  const SITUATION_OPTIONS= ['혼밥','데이트','회식','가족','야식','점심','빠른식사','특별한날']
+  const TEXTURE_OPTIONS   = ['바삭', '쫄깃', '촉촉', '담백', '진한', '고소', '부드러운', '매콤', '달콤', '새콤']
+  const SITUATION_OPTIONS = ['혼밥', '데이트', '회식', '가족', '야식', '점심', '빠른식사', '특별한날']
 
-  const toggleTag = (tag:string, list:string[], set:(v:string[])=>void, max:number) => {
-    set(list.includes(tag) ? list.filter(t=>t!==tag) : list.length<max ? [...list,tag] : list)
+  const toggleTag = (tag: string, list: string[], set: (v: string[]) => void, max: number) => {
+    set(list.includes(tag) ? list.filter(t => t !== tag) : list.length < max ? [...list, tag] : list)
   }
 
   /* 사진 업로드 */
@@ -130,53 +128,105 @@ function ReviewWriteInner() {
     setUploading(false)
   }
 
-  /* 제출 */
+  /* ✅ 수정된 handleSubmit */
   const handleSubmit = async () => {
-    if (!storeName) { alert('가게를 선택해주세요. 위의 버튼을 눌러 지도에서 가게를 선택해주세요.'); return }
-    if (!menuName.trim()) { alert('메뉴 이름을 입력해주세요.'); return }
+    if (!storeName) {
+      alert('가게를 선택해주세요. 위의 버튼을 눌러 지도에서 가게를 선택해주세요.')
+      return
+    }
+    if (!menuName.trim()) {
+      alert('메뉴 이름을 입력해주세요.')
+      return
+    }
     setSubmitting(true)
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { alert('로그인이 필요합니다.'); setSubmitting(false); return }
 
     try {
-      /* 가게 ID 확정 */
-      let realStoreId = storeId
+      let realStoreId: string | null = null
+
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeId)
-      if (!isUUID) {
-        const { data: existing } = await supabase.from('stores').select('id').eq('name', storeName).eq('address', address).maybeSingle()
-        if (existing) {
-          realStoreId = existing.id
-        } else {
-          const { data: created } = await supabase.from('stores').insert({
-            name: storeName, address, category,
-            latitude: lat ? parseFloat(lat) : null,
-            longitude: lng ? parseFloat(lng) : null,
-            phone,
-          }).select('id').single()
+
+      if (isUUID) {
+        // 이미 UUID → 그대로 사용
+        realStoreId = storeId
+      } else {
+        // Kakao ID (숫자 문자열) → kakao_id로 먼저 조회
+        if (storeId) {
+          const { data: byKakao } = await supabase
+            .from('stores')
+            .select('id')
+            .eq('kakao_id', storeId)
+            .maybeSingle()
+          if (byKakao) { realStoreId = byKakao.id }
+        }
+
+        // kakao_id로 못 찾으면 name + address로 조회
+        if (!realStoreId && storeName && address) {
+          const { data: byNameAddr } = await supabase
+            .from('stores')
+            .select('id')
+            .eq('name', storeName)
+            .eq('address', address)
+            .maybeSingle()
+          if (byNameAddr) { realStoreId = byNameAddr.id }
+        }
+
+        // 그래도 없으면 새로 insert
+        if (!realStoreId) {
+          const { data: created, error: insertErr } = await supabase
+            .from('stores')
+            .insert({
+              name:      storeName,
+              address:   address   || null,
+              category:  category  || null,
+              latitude:  lat  ? parseFloat(lat)  : null,
+              longitude: lng  ? parseFloat(lng)  : null,
+              phone:     phone     || null,
+              kakao_id:  storeId   || null,   // ← kakao_id 저장
+            })
+            .select('id')
+            .single()
+
+          if (insertErr) throw insertErr
           if (created) realStoreId = created.id
         }
       }
 
-      const { error } = await supabase.from('reviews').insert({
-        user_id: user.id, store_id: realStoreId,
-        menu_name: menuName.trim(), content: content.trim() || null,
+      if (!realStoreId) throw new Error('store_id를 확정할 수 없습니다.')
+
+      /* 리뷰 insert */
+      const { error: reviewErr } = await supabase.from('reviews').insert({
+        user_id:       user.id,
+        store_id:      realStoreId,          // ✅ 반드시 UUID
+        menu_name:     menuName.trim(),
+        content:       content.trim()       || null,
         one_line_review: oneLineReview.trim() || null,
-        star_score: starScore, want_to_go_back: wantToGoBack,
-        taste_score: tasteScore, portion_score: portionScore, value_score: valueScore,
-        spiciness, saltiness, sweetness,
-        texture_tags: textureTags, situation_tags: situationTags,
-        compare_menu: compareMenu || null, compare_store: compareStore || null,
-        photos: photos.length ? photos : null,
+        star_score:    starScore,
+        want_to_go_back: wantToGoBack,
+        taste_score:   tasteScore,
+        portion_score: portionScore,
+        value_score:   valueScore,
+        spiciness,
+        saltiness,
+        sweetness,
+        texture_tags:  textureTags,
+        situation_tags: situationTags,
+        compare_menu:  compareMenu  || null,
+        compare_store: compareStore || null,
+        photos:        photos.length ? photos : null,
       })
+      if (reviewErr) throw reviewErr
 
-      if (error) throw error
-
-      /* 리뷰 수 증가 + 첫 리뷰 뱃지 */
+      /* 리뷰 수 증가 */
       await supabase.rpc('increment_review_count', { store_id_input: realStoreId })
-      const { data: prev } = await supabase.from('reviews').select('id').eq('user_id', user.id)
-      if ((prev?.length ?? 0) === 1) {
-        await supabase.from('user_badges').insert({ user_id: user.id, badge_type: 'first_review' }).select()
+
+      /* 첫 리뷰 뱃지 */
+      const { data: prevReviews } = await supabase
+        .from('reviews').select('id').eq('user_id', user.id)
+      if ((prevReviews?.length ?? 0) === 1) {
+        await supabase.from('user_badges').insert({ user_id: user.id, badge_type: 'first_review' })
       }
 
       alert('리뷰가 등록되었습니다! 🎉')
@@ -223,8 +273,7 @@ function ReviewWriteInner() {
               </div>
               <a href={`/map?selectMode=true&returnTo=review`} style={{
                 padding: '6px 14px', background: '#FF5A3D', color: 'white',
-                borderRadius: '20px', fontSize: '12px', fontWeight: '600',
-                textDecoration: 'none'
+                borderRadius: '20px', fontSize: '12px', fontWeight: '600', textDecoration: 'none'
               }}>변경</a>
             </div>
           ) : (
@@ -259,14 +308,14 @@ function ReviewWriteInner() {
           />
         </SectionCard>
 
-        {/* 사진 업로드 */}
+        {/* 사진 */}
         <SectionCard title="📷 사진 (최대 3장)">
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {photos.map((url, i) => (
               <div key={i} style={{ position: 'relative', width: '80px', height: '80px' }}>
-                <img src={url} alt={`사진${i+1}`}
+                <img src={url} alt={`사진${i + 1}`}
                   style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
-                <button onClick={() => setPhotos(p => p.filter((_,j)=>j!==i))} style={{
+                <button onClick={() => setPhotos(p => p.filter((_, j) => j !== i))} style={{
                   position: 'absolute', top: '-6px', right: '-6px',
                   background: '#FF5A3D', color: 'white', border: 'none',
                   borderRadius: '50%', width: '20px', height: '20px',
@@ -292,7 +341,7 @@ function ReviewWriteInner() {
         {/* 별점 + 재방문 */}
         <SectionCard title="⭐ 별점 & 재방문">
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', justifyContent: 'center' }}>
-            {[1,2,3,4,5].map(n => (
+            {[1, 2, 3, 4, 5].map(n => (
               <button key={n} onClick={() => setStarScore(n)} style={{
                 fontSize: '32px', background: 'none', border: 'none',
                 cursor: 'pointer', opacity: n <= starScore ? 1 : 0.3,
@@ -315,12 +364,12 @@ function ReviewWriteInner() {
 
         {/* 맛 프로필 */}
         <SectionCard title="🎯 맛 프로필 (1-10)">
-          <CircleScale label="맛"    emoji="🍽️" value={tasteScore}   onChange={setTasteScore}/>
-          <CircleScale label="양"    emoji="🍱" value={portionScore} onChange={setPortionScore}/>
-          <CircleScale label="가성비" emoji="💰" value={valueScore}   onChange={setValueScore}/>
-          <CircleScale label="맵기"  emoji="🌶️" value={spiciness}    onChange={setSpiciness}/>
-          <CircleScale label="짠기"  emoji="🧂" value={saltiness}    onChange={setSaltiness}/>
-          <CircleScale label="단기"  emoji="🍯" value={sweetness}    onChange={setSweetness}/>
+          <CircleScale label="맛"     emoji="🍽️" value={tasteScore}   onChange={setTasteScore} />
+          <CircleScale label="양"     emoji="🍱" value={portionScore} onChange={setPortionScore} />
+          <CircleScale label="가성비" emoji="💰" value={valueScore}   onChange={setValueScore} />
+          <CircleScale label="맵기"   emoji="🌶️" value={spiciness}    onChange={setSpiciness} />
+          <CircleScale label="짠기"   emoji="🧂" value={saltiness}    onChange={setSaltiness} />
+          <CircleScale label="단기"   emoji="🍯" value={sweetness}    onChange={setSweetness} />
         </SectionCard>
 
         {/* 식감 태그 */}
@@ -359,14 +408,14 @@ function ReviewWriteInner() {
               width: '100%', padding: '12px 14px', borderRadius: '12px',
               border: '1px solid #eee', fontSize: '14px', marginBottom: '10px',
               boxSizing: 'border-box', outline: 'none'
-            }}/>
+            }} />
           <input value={compareStore} onChange={e => setCompareStore(e.target.value)}
             placeholder="비교 가게 이름"
             style={{
               width: '100%', padding: '12px 14px', borderRadius: '12px',
               border: '1px solid #eee', fontSize: '14px',
               boxSizing: 'border-box', outline: 'none'
-            }}/>
+            }} />
         </SectionCard>
 
         {/* 리뷰 텍스트 */}
@@ -378,7 +427,7 @@ function ReviewWriteInner() {
               width: '100%', padding: '12px 14px', borderRadius: '12px',
               border: '1px solid #eee', fontSize: '14px', lineHeight: '1.6',
               resize: 'vertical', boxSizing: 'border-box', outline: 'none'
-            }}/>
+            }} />
         </SectionCard>
 
         {/* 제출 버튼 */}
@@ -397,11 +446,11 @@ function ReviewWriteInner() {
         display: 'flex', padding: '8px 0', zIndex: 100
       }}>
         {[
-          {icon:'🗺️',label:'지도',path:'/map'},
-          {icon:'🍜',label:'MOTD',path:'/feed'},
-          {icon:'✍️',label:'리뷰',path:'/review/write'},
-          {icon:'🔖',label:'저장',path:'/saved'},
-          {icon:'👤',label:'프로필',path:'/profile'},
+          { icon: '🗺️', label: '지도',   path: '/map' },
+          { icon: '🍜', label: 'MOTD',   path: '/feed' },
+          { icon: '✍️', label: '리뷰',   path: '/review/write' },
+          { icon: '🔖', label: '저장',   path: '/saved' },
+          { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
           <button key={item.path} onClick={() => router.push(item.path)} style={{
             flex: 1, border: 'none', background: 'transparent',
