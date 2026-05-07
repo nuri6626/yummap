@@ -60,7 +60,6 @@ export default function SavedPage() {
       const list = (data || []) as SavedStore[]
       setSavedStores(list)
 
-      /* 카테고리 목록 추출 */
       const cats = Array.from(
         new Set(list.map(s => s.stores?.category).filter(Boolean) as string[])
       )
@@ -76,28 +75,27 @@ export default function SavedPage() {
     setSavedStores(prev => prev.filter(s => s.id !== id))
   }
 
-  const handleWriteReview = (s: SavedStore) => {
-    if (!s.stores) return
+  const handleWriteReview = (item: SavedStore) => {
+    if (!item.stores) return
     const params = new URLSearchParams({
-      store_id:       s.store_id,
-      store_name:     s.stores.name,
-      store_address:  s.stores.address  ?? '',
-      store_category: s.stores.category ?? '',
-      store_lat:      String(s.stores.latitude  ?? ''),
-      store_lng:      String(s.stores.longitude ?? ''),
-      store_phone:    s.stores.phone    ?? '',
+      store_id:       item.store_id,
+      store_name:     item.stores.name,
+      store_address:  item.stores.address  ?? '',
+      store_category: item.stores.category ?? '',
+      store_lat:      String(item.stores.latitude  ?? ''),
+      store_lng:      String(item.stores.longitude ?? ''),
+      store_phone:    item.stores.phone    ?? '',
     })
     router.push(`/review/write?${params.toString()}`)
   }
 
-  const handleViewMap = (s: SavedStore) => {
-    if (!s.stores) return
+  const handleViewMap = (item: SavedStore) => {
+    if (!item.stores) return
     router.push(
-      `/map?lat=${s.stores.latitude}&lng=${s.stores.longitude}&name=${encodeURIComponent(s.stores.name)}`
+      `/map?lat=${item.stores.latitude}&lng=${item.stores.longitude}&name=${encodeURIComponent(item.stores.name)}`
     )
   }
 
-  /* 필터 적용 */
   const filtered = filter === '전체'
     ? savedStores
     : savedStores.filter(s => s.stores?.category === filter)
@@ -126,11 +124,7 @@ export default function SavedPage() {
           onClick={() => router.push('/map')}
           style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}
         >🍜 맛지도</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', color: '#bbb' }}>
-            {filtered.length}개 저장
-          </span>
-        </div>
+        <span style={{ fontSize: '11px', color: '#bbb' }}>{filtered.length}개 저장</span>
       </div>
 
       {/* ── 카테고리 필터 탭 ── */}
@@ -171,6 +165,7 @@ export default function SavedPage() {
               fontSize: '15px', fontWeight: '700', cursor: 'pointer'
             }}>🗺️ 지도로 가기</button>
           </div>
+
         ) : (
 
           /* ── 저장 목록 ── */
@@ -187,7 +182,6 @@ export default function SavedPage() {
                 }}>
                   <div style={{ flex: 1 }}>
 
-                    {/* 카테고리 배지 */}
                     {store.category && (
                       <span style={{
                         background: '#fff3f0', color: '#FF5A3D',
@@ -197,34 +191,29 @@ export default function SavedPage() {
                       }}>{store.category}</span>
                     )}
 
-                    {/* 가게 이름 */}
                     <h3 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '800', color: '#333' }}>
                       {store.name}
                     </h3>
 
-                    {/* 주소 */}
                     {store.address && (
                       <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
                         📍 {store.address}
                       </p>
                     )}
 
-                    {/* 전화번호 */}
                     {store.phone && (
                       <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
                         📞 {store.phone}
                       </p>
                     )}
 
-                    {/* 평점 + 리뷰 수 */}
                     {(store.average_rating || store.review_count) && (
                       <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#FF5A3D', fontWeight: '700' }}>
                         {store.average_rating ? `⭐ ${store.average_rating.toFixed(1)}` : ''}
-                        {store.review_count ? ` · 리뷰 ${store.review_count}개` : ''}
+                        {store.review_count   ? ` · 리뷰 ${store.review_count}개` : ''}
                       </p>
                     )}
 
-                    {/* 액션 버튼 */}
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handleWriteReview(item)} style={{
                         background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
@@ -239,11 +228,9 @@ export default function SavedPage() {
                     </div>
                   </div>
 
-                  {/* 저장 삭제 버튼 */}
                   <button onClick={() => handleDelete(item.id)} style={{
                     background: 'none', border: 'none', fontSize: '22px',
-                    cursor: 'pointer', marginLeft: '10px', flexShrink: 0,
-                    padding: '4px'
+                    cursor: 'pointer', marginLeft: '10px', flexShrink: 0, padding: '4px'
                   }} title="저장 해제">🔖</button>
                 </div>
               )
