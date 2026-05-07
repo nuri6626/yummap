@@ -1,25 +1,35 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface SavedStore {
   id: string
   store_id: string
-  store_name: string
-  store_category: string
-  store_address: string
-  store_lat: number
-  store_lng: number
-  store_phone: string
   created_at: string
+  stores: {
+    id: string
+    name: string
+    category: string | null
+    address: string | null
+    latitude: number | null
+    longitude: number | null
+    phone: string | null
+    review_count: number | null
+    average_rating: number | null
+    kakao_id: string | null
+  } | null
 }
 
 export default function SavedPage() {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
+
   const [savedStores, setSavedStores] = useState<SavedStore[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading,     setLoading]     = useState(true)
+  const [filter,      setFilter]      = useState<string>('전체')
+  const [categories,  setCategories]  = useState<string[]>([])
 
   useEffect(() => {
     const fetchSaved = async () => {
@@ -28,12 +38,33 @@ export default function SavedPage() {
 
       const { data, error } = await supabase
         .from('saved_stores')
-        .select('*')
+        .select(`
+          id,
+          store_id,
+          created_at,
+          stores (
+            id, name, category, address,
+            latitude, longitude, phone,
+            review_count, average_rating, kakao_id
+          )
+        `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      console.log('저장 데이터:', data, '오류:', error)
-      setSavedStores(data || [])
+      if (error) {
+        console.error('저장 목록 오류:', error)
+        setLoading(false)
+        return
+      }
+
+      const list = (data || []) as SavedStore[]
+      setSavedStores(list)
+
+      /* 카테고리 목록 추출 */
+      const cats = Array.from(
+        new Set(list.map(s => s.stores?.category).filter(Boolean) as string[])
+      )
+      setCategories(cats)
       setLoading(false)
     }
     fetchSaved()
@@ -45,100 +76,209 @@ export default function SavedPage() {
     setSavedStores(prev => prev.filter(s => s.id !== id))
   }
 
+  const handleWriteReview = (s: SavedStore) => {
+    if (!s.stores) return
+    const params = new URLSearchParams({
+      store_id:       s.store_id,
+      store_name:     s.stores.name,
+      store_address:  s.stores.address  ?? '',
+      store_category: s.stores.category ?? '',
+      store_lat:      String(s.stores.latitude  ?? ''),
+      store_lng:      String(s.stores.longitude ?? ''),
+      store_phone:    s.stores.phone    ?? '',
+    })
+    router.push(`/review/write?${params.toString()}`)
+  }
+
+  const handleViewMap = (s: SavedStore) => {
+    if (!s.stores) return
+    router.push(
+      `/map?lat=${s.stores.latitude}&lng=${s.stores.longitude}&name=${encodeURIComponent(s.stores.name)}`
+    )
+  }
+
+  /* 필터 적용 */
+  const filtered = filter === '전체'
+    ? savedStores
+    : savedStores.filter(s => s.stores?.category === filter)
+
   if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#FFF5F3' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '40px', marginBottom: '12px' }}>❤️</div>
-        <p style={{ color: '#FF5A3D', fontWeight: '700' }}>불러오는 중...</p>
-      </div>
+    <div style={{
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+      height: '100vh', background: '#f5f5f5', flexDirection: 'column', gap: '12px'
+    }}>
+      <div style={{ fontSize: '40px' }}>🔖</div>
+      <p style={{ color: '#999', fontSize: '14px' }}>저장 목록 불러오는 중...</p>
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FFF5F3', fontFamily: 'Pretendard, -apple-system, sans-serif', paddingBottom: '80px' }}>
-      {/* 헤더 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'white', borderBottom: '1px solid #F2F2F2', position: 'sticky', top: 0, zIndex: 10 }}>
-        <img src="/yum2.png" alt="yummap" style={{ height: '32px' }} />
-        <span style={{ fontSize: '16px', fontWeight: '800', color: '#1A1A1A' }}>저장한 맛집</span>
-        <div style={{ width: '32px' }} />
+    <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
+
+      {/* ── 헤더 ── */}
+      <div style={{
+        background: 'white', padding: '16px 20px',
+        borderBottom: '1px solid #f0f0f0',
+        position: 'sticky', top: 0, zIndex: 100,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <h1
+          onClick={() => router.push('/map')}
+          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}
+        >🍜 맛지도</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', color: '#bbb' }}>
+            {filtered.length}개 저장
+          </span>
+        </div>
       </div>
 
-      <div style={{ padding: '16px' }}>
-        {savedStores.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 0' }}>
-            <div style={{ fontSize: '56px', marginBottom: '16px' }}>❤️</div>
-            <p style={{ fontSize: '18px', fontWeight: '800', color: '#1A1A1A', marginBottom: '8px' }}>저장한 맛집이 없어요</p>
-            <p style={{ color: '#999', fontSize: '14px', marginBottom: '24px' }}>지도에서 마음에 드는 맛집을 저장해보세요!</p>
-            <button onClick={() => router.push('/map')}
-              style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '16px', padding: '14px 28px', fontSize: '15px', fontWeight: '700', cursor: 'pointer' }}>
-              🗺️ 지도로 가기
-            </button>
+      {/* ── 카테고리 필터 탭 ── */}
+      {categories.length > 0 && (
+        <div style={{
+          background: 'white', borderBottom: '1px solid #f0f0f0',
+          display: 'flex', overflowX: 'auto', padding: '0 16px',
+          position: 'sticky', top: '57px', zIndex: 99,
+          scrollbarWidth: 'none',
+        }}>
+          {['전체', ...categories].map(cat => (
+            <button key={cat} onClick={() => setFilter(cat)} style={{
+              flexShrink: 0, padding: '12px 14px', border: 'none', background: 'none',
+              fontSize: '13px', fontWeight: filter === cat ? '700' : '400',
+              color: filter === cat ? '#FF5A3D' : '#aaa',
+              borderBottom: filter === cat ? '2px solid #FF5A3D' : '2px solid transparent',
+              cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>{cat}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ padding: '12px 16px' }}>
+
+        {/* ── 빈 상태 ── */}
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+            <div style={{ fontSize: '56px', marginBottom: '16px' }}>🔖</div>
+            <p style={{ fontSize: '18px', fontWeight: '800', color: '#333', marginBottom: '8px' }}>
+              {filter === '전체' ? '저장한 맛집이 없어요' : `${filter} 카테고리 저장 없음`}
+            </p>
+            <p style={{ color: '#999', fontSize: '14px', marginBottom: '24px' }}>
+              지도에서 마음에 드는 맛집을 저장해보세요!
+            </p>
+            <button onClick={() => router.push('/map')} style={{
+              background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
+              border: 'none', borderRadius: '16px', padding: '14px 28px',
+              fontSize: '15px', fontWeight: '700', cursor: 'pointer'
+            }}>🗺️ 지도로 가기</button>
           </div>
         ) : (
-          <>
-            <p style={{ fontSize: '14px', color: '#999', marginBottom: '12px', fontWeight: '600' }}>
-              총 {savedStores.length}개 저장됨
-            </p>
-            {savedStores.map(store => (
-              <div key={store.id} style={{ background: 'white', borderRadius: '16px', padding: '16px', marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ background: '#FFE7DF', color: '#FF5A3D', borderRadius: '8px', padding: '2px 8px', fontSize: '11px', fontWeight: '700' }}>
-                      {store.store_category}
-                    </span>
-                  </div>
-                  <h3 style={{ fontSize: '16px', fontWeight: '900', color: '#1A1A1A', margin: '0 0 4px' }}>{store.store_name}</h3>
-                  <p style={{ fontSize: '13px', color: '#999', margin: '0 0 8px' }}>📍 {store.store_address}</p>
-                  {store.store_phone && <p style={{ fontSize: '13px', color: '#999', margin: '0 0 10px' }}>📞 {store.store_phone}</p>}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => router.push(
-                        `/review/write?store_id=${store.store_id}` +
-                        `&store_name=${encodeURIComponent(store.store_name)}` +
-                        `&store_address=${encodeURIComponent(store.store_address || '')}` +
-                        `&store_category=${encodeURIComponent(store.store_category || '')}` +
-                        `&store_lat=${store.store_lat}` +
-                        `&store_lng=${store.store_lng}` +
-                        `&store_phone=${encodeURIComponent(store.store_phone || '')}`
-                      )}
-                      style={{ background: '#FF5A3D', color: 'white', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                      ✏️ 리뷰 작성
-                    </button>
-                    <button
-  onClick={() => router.push(`/map?lat=${store.store_lat}&lng=${store.store_lng}&name=${encodeURIComponent(store.store_name)}`)}
-  style={{ background: '#F2F2F2', color: '#666', border: 'none', borderRadius: '10px', padding: '8px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-  🗺️ 지도에서 보기
-</button>
 
+          /* ── 저장 목록 ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {filtered.map(item => {
+              const store = item.stores
+              if (!store) return null
 
+              return (
+                <div key={item.id} style={{
+                  background: 'white', borderRadius: '20px', padding: '16px',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
+                }}>
+                  <div style={{ flex: 1 }}>
+
+                    {/* 카테고리 배지 */}
+                    {store.category && (
+                      <span style={{
+                        background: '#fff3f0', color: '#FF5A3D',
+                        borderRadius: '10px', padding: '3px 10px',
+                        fontSize: '11px', fontWeight: '700',
+                        display: 'inline-block', marginBottom: '8px'
+                      }}>{store.category}</span>
+                    )}
+
+                    {/* 가게 이름 */}
+                    <h3 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '800', color: '#333' }}>
+                      {store.name}
+                    </h3>
+
+                    {/* 주소 */}
+                    {store.address && (
+                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
+                        📍 {store.address}
+                      </p>
+                    )}
+
+                    {/* 전화번호 */}
+                    {store.phone && (
+                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
+                        📞 {store.phone}
+                      </p>
+                    )}
+
+                    {/* 평점 + 리뷰 수 */}
+                    {(store.average_rating || store.review_count) && (
+                      <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#FF5A3D', fontWeight: '700' }}>
+                        {store.average_rating ? `⭐ ${store.average_rating.toFixed(1)}` : ''}
+                        {store.review_count ? ` · 리뷰 ${store.review_count}개` : ''}
+                      </p>
+                    )}
+
+                    {/* 액션 버튼 */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => handleWriteReview(item)} style={{
+                        background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
+                        border: 'none', borderRadius: '10px', padding: '8px 14px',
+                        fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                      }}>✍️ 리뷰 작성</button>
+                      <button onClick={() => handleViewMap(item)} style={{
+                        background: '#f5f5f5', color: '#666', border: 'none',
+                        borderRadius: '10px', padding: '8px 14px',
+                        fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                      }}>🗺️ 지도 보기</button>
+                    </div>
                   </div>
+
+                  {/* 저장 삭제 버튼 */}
+                  <button onClick={() => handleDelete(item.id)} style={{
+                    background: 'none', border: 'none', fontSize: '22px',
+                    cursor: 'pointer', marginLeft: '10px', flexShrink: 0,
+                    padding: '4px'
+                  }} title="저장 해제">🔖</button>
                 </div>
-                <button onClick={() => handleDelete(store.id)}
-                  style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: '#FF5A3D', marginLeft: '8px' }}>
-                  ❤️
-                </button>
-              </div>
-            ))}
-          </>
+              )
+            })}
+          </div>
         )}
       </div>
 
-      {/* 하단 네비게이션 */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex', justifyContent: 'space-around', padding: '12px 0 20px', background: 'white', borderTop: '1px solid #F2F2F2' }}>
+      {/* ── 하단 네비게이션 ── */}
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: 'white', borderTop: '1px solid #f0f0f0',
+        display: 'flex',
+        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
+        zIndex: 100
+      }}>
         {[
-          { icon: '🗺️', label: '지도', path: '/map' },
-          { icon: '📰', label: '피드', path: '/feed' },
-          { icon: '✏️', label: '리뷰', path: '/review/write' },
-          { icon: '❤️', label: '저장', path: '/saved', active: true },
+          { icon: '🗺️', label: '지도',   path: '/map' },
+          { icon: '🍜', label: 'MOTD',   path: '/feed' },
+          { icon: '✍️', label: '리뷰',   path: '/review/write' },
+          { icon: '🔖', label: '저장',   path: '/saved' },
           { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
-          <button key={item.path} onClick={() => router.push(item.path)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <span style={{ fontSize: '22px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', fontWeight: '600', color: (item as any).active ? '#FF5A3D' : '#999' }}>{item.label}</span>
+          <button key={item.path} onClick={() => router.push(item.path)} style={{
+            flex: 1, border: 'none', background: 'transparent',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+            cursor: 'pointer', padding: '4px 0'
+          }}>
+            <span style={{ fontSize: '20px' }}>{item.icon}</span>
+            <span style={{ fontSize: '10px', color: item.path === '/saved' ? '#FF5A3D' : '#999' }}>
+              {item.label}
+            </span>
           </button>
         ))}
-      </div>
+      </nav>
     </div>
   )
 }
