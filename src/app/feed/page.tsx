@@ -7,6 +7,19 @@ import { createClient } from '@/lib/supabase/client'
 /* =========================================================
    타입 정의
    ========================================================= */
+interface StoreInfo {
+  id: string
+  name: string
+  category: string
+  address: string
+}
+
+interface UserProfile {
+  nickname: string
+  bio?: string
+  taste_mbti?: string
+}
+
 interface Review {
   id: string
   user_id: string
@@ -26,8 +39,8 @@ interface Review {
   situation_tags: string[] | null
   photos: string[] | null
   created_at: string
-  stores: { id: string; name: string; category: string; address: string } | null
-  user_taste_profile: { nickname: string; bio?: string; taste_mbti?: string } | null
+  stores: StoreInfo | null
+  user_taste_profile: UserProfile | null
   like_count: number
   is_liked: boolean
   is_saved: boolean
@@ -129,27 +142,46 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
 /* =========================================================
    미니 프로필 팝업
    ========================================================= */
+interface MiniProfile {
+  nickname: string
+  bio?: string
+  taste_mbti?: string
+  review_count: number
+  follower_count: number
+  following_count: number
+  reviews: {
+    id: string
+    menu_name: string | null
+    star_score: number | null
+    stores: { name: string } | null
+  }[]
+}
+
 function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void }) {
   const router   = useRouter()
   const supabase = createClient()
-  const [profile, setProfile] = useState<{
-    nickname: string; bio?: string; taste_mbti?: string
-    review_count: number; follower_count: number; following_count: number
-    reviews: { id: string; menu_name: string | null; stores: { name: string } | null; star_score: number | null }[]
-  } | null>(null)
+  const [profile, setProfile] = useState<MiniProfile | null>(null)
 
   useEffect(() => {
     const load = async () => {
       const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }] = await Promise.all([
         supabase.from('user_taste_profile').select('*').eq('user_id', userId).single(),
         supabase.from('reviews')
-          .select('id,menu_name,star_score,stores(name)')
+          .select('id, menu_name, star_score, stores(name)')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(5),
         supabase.from('follows').select('id').eq('following_id', userId),
         supabase.from('follows').select('id').eq('follower_id', userId),
       ])
+
+      const reviews = (rv || []).map((r: any) => ({
+        id:         r.id,
+        menu_name:  r.menu_name,
+        star_score: r.star_score,
+        stores:     Array.isArray(r.stores) ? r.stores[0] ?? null : r.stores ?? null,
+      }))
+
       setProfile({
         nickname:        p?.nickname      || '익명',
         bio:             p?.bio,
@@ -157,7 +189,7 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
         review_count:    rv?.length       || 0,
         follower_count:  fwer?.length     || 0,
         following_count: fwing?.length    || 0,
-        reviews: (rv || []) as { id: string; menu_name: string | null; stores: { name: string } | null; star_score: number | null }[],
+        reviews,
       })
     }
     load()
@@ -251,24 +283,16 @@ function FollowButton({ targetId, currentUserId }: { targetId: string; currentUs
   }, [currentUserId, targetId, isMe])
 
   if (isMe) return (
-    <span style={{
-      padding: '4px 10px', borderRadius: '20px', fontSize: '10px',
-      fontWeight: '700', background: '#f5f5f5', color: '#aaa'
-    }}>나</span>
+    <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: '700', background: '#f5f5f5', color: '#aaa' }}>나</span>
   )
-
   if (!currentUserId) return (
     <button onClick={e => { e.stopPropagation(); router.push('/login') }} style={{
       padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
       border: '1.5px solid #ddd', background: 'white', color: '#aaa', cursor: 'pointer'
     }}>팔로우</button>
   )
-
   if (loading) return (
-    <span style={{
-      padding: '4px 12px', borderRadius: '20px', fontSize: '11px',
-      background: '#f0f0f0', color: 'transparent', minWidth: '60px', display: 'inline-block'
-    }}>ㅤ</span>
+    <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '11px', background: '#f0f0f0', color: 'transparent', minWidth: '60px', display: 'inline-block' }}>ㅤ</span>
   )
 
   const toggle = async (e: React.MouseEvent) => {
@@ -294,17 +318,16 @@ function FollowButton({ targetId, currentUserId }: { targetId: string; currentUs
 }
 
 /* =========================================================
-   댓글 섹션 - FK 없이 별도 조회로 수정
+   댓글 섹션
    ========================================================= */
 function CommentsSection({ reviewId, currentUserId }: { reviewId: string; currentUserId: string | null }) {
   const supabase = createClient()
-  const [comments,      setComments]      = useState<Comment[]>([])
-  const [text,          setText]          = useState('')
-  const [open,          setOpen]          = useState(false)
-  const [commentCount,  setCommentCount]  = useState(0)
+  const [comments,     setComments]     = useState<Comment[]>([])
+  const [text,         setText]         = useState('')
+  const [open,         setOpen]         = useState(false)
+  const [commentCount, setCommentCount] = useState(0)
 
   const load = useCallback(async () => {
-    /* ① comments 조회 */
     const { data: commentData, count } = await supabase
       .from('comments')
       .select('*', { count: 'exact' })
@@ -318,21 +341,23 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
       return
     }
 
-    /* ② user_id 목록으로 nickname 별도 조회 */
-    const userIds = [...new Set(commentData.map((c: any) => c.user_id))]
+    const userIds = [...new Set(commentData.map((c: any) => c.user_id as string))]
     const { data: profiles } = await supabase
       .from('user_taste_profile')
       .select('user_id, nickname')
       .in('user_id', userIds)
 
-    const profileMap = Object.fromEntries(
+    const profileMap: Record<string, string> = Object.fromEntries(
       (profiles || []).map((p: any) => [p.user_id, p.nickname])
     )
 
-    /* ③ 합치기 */
     const merged: Comment[] = commentData.map((c: any) => ({
-      ...c,
-      user_taste_profile: { nickname: profileMap[c.user_id] || '익명' }
+      id:         c.id,
+      user_id:    c.user_id,
+      review_id:  c.review_id,
+      content:    c.content,
+      created_at: c.created_at,
+      user_taste_profile: { nickname: profileMap[c.user_id] || '익명' },
     }))
 
     setComments(merged)
@@ -349,11 +374,7 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
 
   const submit = async () => {
     if (!text.trim() || !currentUserId) return
-    await supabase.from('comments').insert({
-      review_id: reviewId,
-      user_id:   currentUserId,
-      content:   text.trim()
-    })
+    await supabase.from('comments').insert({ review_id: reviewId, user_id: currentUserId, content: text.trim() })
     setText('')
     load()
   }
@@ -366,36 +387,25 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
       >
         💬 댓글 {commentCount > 0 ? commentCount : ''} {open ? '접기 ▲' : '보기 ▼'}
       </button>
-
       {open && (
         <div style={{ marginTop: '10px' }} onClick={e => e.stopPropagation()}>
           {comments.length === 0 && (
-            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', padding: '8px 0' }}>
-              첫 댓글을 남겨보세요!
-            </p>
+            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', padding: '8px 0' }}>첫 댓글을 남겨보세요!</p>
           )}
           {comments.map(c => (
             <div key={c.id} style={{ marginBottom: '8px', fontSize: '13px' }}>
-              <span style={{ fontWeight: '700', color: '#333', marginRight: '6px' }}>
-                {c.user_taste_profile?.nickname || '익명'}
-              </span>
+              <span style={{ fontWeight: '700', color: '#333', marginRight: '6px' }}>{c.user_taste_profile?.nickname || '익명'}</span>
               <span style={{ color: '#555' }}>{c.content}</span>
-              <span style={{ color: '#ccc', fontSize: '11px', marginLeft: '6px' }}>
-                {new Date(c.created_at).toLocaleDateString('ko-KR')}
-              </span>
+              <span style={{ color: '#ccc', fontSize: '11px', marginLeft: '6px' }}>{new Date(c.created_at).toLocaleDateString('ko-KR')}</span>
             </div>
           ))}
           {currentUserId ? (
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <input
-                value={text}
-                onChange={e => setText(e.target.value)}
+                value={text} onChange={e => setText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submit()}
                 placeholder="댓글을 입력하세요..."
-                style={{
-                  flex: 1, padding: '8px 12px', borderRadius: '20px',
-                  border: '1px solid #eee', fontSize: '13px', outline: 'none'
-                }}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: '20px', border: '1px solid #eee', fontSize: '13px', outline: 'none' }}
               />
               <button onClick={submit} style={{
                 padding: '8px 14px', borderRadius: '20px', border: 'none',
@@ -403,9 +413,7 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
               }}>전송</button>
             </div>
           ) : (
-            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
-              댓글을 쓰려면 로그인하세요
-            </p>
+            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>댓글을 쓰려면 로그인하세요</p>
           )}
         </div>
       )}
@@ -414,19 +422,19 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
 }
 
 /* =========================================================
-   메인 MOTD 피드 페이지
+   메인 MOTD 피드
    ========================================================= */
 export default function MOTDPage() {
   const router   = useRouter()
   const supabase = createClient()
 
-  const [reviews,       setReviews]       = useState<Review[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [tab,           setTab]           = useState<'all' | 'following'>('all')
-  const [currentUser,   setCurrentUser]   = useState<string | null>(null)
-  const [followingIds,  setFollowingIds]  = useState<string[]>([])
-  const [tasteModal,    setTasteModal]    = useState<Review | null>(null)
-  const [profileModal,  setProfileModal]  = useState<string | null>(null)
+  const [reviews,      setReviews]      = useState<Review[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [tab,          setTab]          = useState<'all' | 'following'>('all')
+  const [currentUser,  setCurrentUser]  = useState<string | null>(null)
+  const [followingIds, setFollowingIds] = useState<string[]>([])
+  const [tasteModal,   setTasteModal]   = useState<Review | null>(null)
+  const [profileModal, setProfileModal] = useState<string | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -436,7 +444,7 @@ export default function MOTDPage() {
 
       if (uid) {
         const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
-        setFollowingIds(fol?.map(f => f.following_id) ?? [])
+        setFollowingIds(fol?.map((f: any) => f.following_id) ?? [])
       }
 
       const { data, error } = await supabase
@@ -447,9 +455,19 @@ export default function MOTDPage() {
 
       if (error) { console.error('리뷰 조회 오류:', error); setLoading(false); return }
 
-      const list = (data || []) as Review[]
-      const reviewIds = list.map(r => r.id)
-      const storeIds  = list.map(r => r.store_id).filter(Boolean) as string[]
+      /* stores / user_taste_profile 이 배열로 올 경우 단일 객체로 변환 */
+      const rawList = (data || []).map((r: any) => ({
+        ...r,
+        stores: Array.isArray(r.stores)
+          ? (r.stores[0] ?? null)
+          : (r.stores ?? null),
+        user_taste_profile: Array.isArray(r.user_taste_profile)
+          ? (r.user_taste_profile[0] ?? null)
+          : (r.user_taste_profile ?? null),
+      })) as Review[]
+
+      const reviewIds = rawList.map(r => r.id)
+      const storeIds  = rawList.map(r => r.store_id).filter(Boolean) as string[]
 
       const [{ data: allLikes }, { data: myLikes }, { data: mySaves }] = await Promise.all([
         supabase.from('review_likes').select('review_id').in('review_id', reviewIds),
@@ -457,13 +475,13 @@ export default function MOTDPage() {
         uid && storeIds.length ? supabase.from('saved_stores').select('store_id').eq('user_id', uid).in('store_id', storeIds) : { data: [] },
       ])
 
-      const likeCountMap = (allLikes || []).reduce<Record<string, number>>((acc, l) => {
+      const likeCountMap = (allLikes || []).reduce<Record<string, number>>((acc, l: any) => {
         acc[l.review_id] = (acc[l.review_id] || 0) + 1; return acc
       }, {})
       const myLikeSet = new Set((myLikes || []).map((l: any) => l.review_id))
       const mySaveSet = new Set((mySaves || []).map((s: any) => s.store_id))
 
-      setReviews(list.map(r => ({
+      setReviews(rawList.map(r => ({
         ...r,
         like_count: likeCountMap[r.id] ?? 0,
         is_liked:   myLikeSet.has(r.id),
@@ -514,27 +532,26 @@ export default function MOTDPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
 
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <div style={{
         background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
         position: 'sticky', top: 0, zIndex: 100,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
-        <h1
-          onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}
-        >🍜 MOTD</h1>
+        <h1 onClick={() => router.push('/map')}
+          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
+          🍜 MOTD
+        </h1>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span style={{ fontSize: '11px', color: '#bbb' }}>{filtered.length}개</span>
           <button onClick={() => router.push('/review/write')} style={{
             background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
-            border: 'none', borderRadius: '20px', padding: '8px 16px',
-            fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+            border: 'none', borderRadius: '20px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
           }}>+ 리뷰</button>
         </div>
       </div>
 
-      {/* ── 탭 ── */}
+      {/* 탭 */}
       <div style={{
         background: 'white', display: 'flex', padding: '0 16px',
         borderBottom: '1px solid #f0f0f0', position: 'sticky', top: '57px', zIndex: 99
@@ -546,13 +563,11 @@ export default function MOTDPage() {
             color: tab === t ? '#FF5A3D' : '#aaa',
             borderBottom: tab === t ? '2px solid #FF5A3D' : '2px solid transparent',
             cursor: 'pointer'
-          }}>
-            {t === 'all' ? '전체' : '팔로잉'}
-          </button>
+          }}>{t === 'all' ? '전체' : '팔로잉'}</button>
         ))}
       </div>
 
-      {/* ── 카드 목록 ── */}
+      {/* 카드 목록 */}
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px' }}>
           <div style={{ fontSize: '60px', marginBottom: '16px' }}>🍽️</div>
@@ -570,22 +585,16 @@ export default function MOTDPage() {
             ) / 10
 
             return (
-              <div
-                key={review.id}
-                onClick={() => setTasteModal(review)}
-                style={{
-                  background: 'white', borderRadius: '20px', overflow: 'hidden',
-                  cursor: 'pointer', boxShadow: '0 2px 16px rgba(0,0,0,0.08)'
-                }}
-              >
+              <div key={review.id} onClick={() => setTasteModal(review)} style={{
+                background: 'white', borderRadius: '20px', overflow: 'hidden',
+                cursor: 'pointer', boxShadow: '0 2px 16px rgba(0,0,0,0.08)'
+              }}>
                 {/* 사진 or 컬러 헤더 */}
                 {photos.length > 0 ? (
                   <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', overflow: 'hidden', background: '#f0f0f0' }}>
-                    <img
-                      src={photos[0]} alt="리뷰 사진"
+                    <img src={photos[0]} alt="리뷰 사진"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                     {photos.length > 1 && (
                       <div style={{
                         position: 'absolute', top: '10px', right: '10px',
@@ -614,8 +623,7 @@ export default function MOTDPage() {
                 ) : (
                   <div style={{
                     background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-                    padding: '20px 16px',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    padding: '20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div>
                       <p style={{ margin: 0, color: 'white', fontWeight: '700', fontSize: '16px' }}>
@@ -634,7 +642,6 @@ export default function MOTDPage() {
 
                 {/* 본문 */}
                 <div style={{ padding: '14px 16px' }}>
-                  {/* 유저 행 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{
@@ -642,16 +649,12 @@ export default function MOTDPage() {
                         background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: 'white', fontSize: '13px', fontWeight: '700'
-                      }}>
-                        {(review.user_taste_profile?.nickname || '익')[0]}
-                      </div>
+                      }}>{(review.user_taste_profile?.nickname || '익')[0]}</div>
                       <div>
                         <button
                           onClick={e => { e.stopPropagation(); setProfileModal(review.user_id) }}
                           style={{ border: 'none', background: 'none', padding: 0, fontSize: '13px', fontWeight: '700', color: '#333', cursor: 'pointer' }}
-                        >
-                          {review.user_taste_profile?.nickname || '익명'}
-                        </button>
+                        >{review.user_taste_profile?.nickname || '익명'}</button>
                         <p style={{ margin: 0, fontSize: '11px', color: '#aaa' }}>
                           {new Date(review.created_at).toLocaleDateString('ko-KR')}
                         </p>
@@ -660,7 +663,6 @@ export default function MOTDPage() {
                     <FollowButton targetId={review.user_id} currentUserId={currentUser} />
                   </div>
 
-                  {/* 메뉴 + 한줄평 */}
                   {review.menu_name && (
                     <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#555', background: '#fff5f3', borderRadius: '8px', padding: '6px 10px' }}>
                       🍴 {review.menu_name}
@@ -672,7 +674,6 @@ export default function MOTDPage() {
                     </p>
                   )}
 
-                  {/* 태그 */}
                   {((review.texture_tags?.length ?? 0) + (review.situation_tags?.length ?? 0)) > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
                       {review.texture_tags?.map(t => (
@@ -684,27 +685,21 @@ export default function MOTDPage() {
                     </div>
                   )}
 
-                  {/* 액션 버튼 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
                     <div style={{ display: 'flex', gap: '12px' }}>
                       <button onClick={e => toggleLike(e, review)} style={{
                         border: 'none', background: 'none', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '4px',
                         fontSize: '13px', color: review.is_liked ? '#FF5A3D' : '#aaa', fontWeight: '600'
-                      }}>
-                        {review.is_liked ? '❤️' : '🤍'} {review.like_count}
-                      </button>
+                      }}>{review.is_liked ? '❤️' : '🤍'} {review.like_count}</button>
                       <button onClick={e => toggleSave(e, review)} style={{
                         border: 'none', background: 'none', cursor: 'pointer',
                         fontSize: '13px', color: review.is_saved ? '#FF9800' : '#aaa', fontWeight: '600'
-                      }}>
-                        {review.is_saved ? '🔖' : '📌'} {review.is_saved ? '저장됨' : '저장'}
-                      </button>
+                      }}>{review.is_saved ? '🔖' : '📌'} {review.is_saved ? '저장됨' : '저장'}</button>
                     </div>
                     <span style={{ fontSize: '11px', color: '#ccc' }}>탭 → 맛 분석 👆</span>
                   </div>
 
-                  {/* 댓글 */}
                   <CommentsSection reviewId={review.id} currentUserId={currentUser} />
                 </div>
               </div>
@@ -713,13 +708,11 @@ export default function MOTDPage() {
         </div>
       )}
 
-      {/* ── 하단 네비 ── */}
+      {/* 하단 네비 */}
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex',
-        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
-        zIndex: 100
+        display: 'flex', padding: '8px 0 calc(8px + env(safe-area-inset-bottom))', zIndex: 100
       }}>
         {[
           { icon: '🗺️', label: '지도',   path: '/map' },
@@ -734,14 +727,11 @@ export default function MOTDPage() {
             cursor: 'pointer', padding: '4px 0'
           }}>
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', color: item.path === '/feed' ? '#FF5A3D' : '#999' }}>
-              {item.label}
-            </span>
+            <span style={{ fontSize: '10px', color: item.path === '/feed' ? '#FF5A3D' : '#999' }}>{item.label}</span>
           </button>
         ))}
       </nav>
 
-      {/* ── 팝업 ── */}
       {tasteModal   && <TasteModal   review={tasteModal}   onClose={() => setTasteModal(null)} />}
       {profileModal && <ProfileModal userId={profileModal} onClose={() => setProfileModal(null)} />}
     </div>
