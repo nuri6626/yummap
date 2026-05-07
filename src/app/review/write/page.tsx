@@ -134,7 +134,7 @@ function ReviewWriteInner() {
       const { data, error } = await supabase.storage.from('review-photos').upload(fileName, file)
       if (!error && data) {
         const { data: urlData } = supabase.storage.from('review-photos').getPublicUrl(data.path)
-        setPhotos(prev => [...prev, urlData.publicUrl])
+        setPhotos(prev => [...prev, urlData.publicUrl])//
       }
     }
   }
