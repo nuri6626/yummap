@@ -14,46 +14,69 @@ function parsePhotos(photos: any): string[] {
   return []
 }
 
-function RadarChart({ scores, size = 140 }: {
-  scores: { taste:number; portion:number; value:number; spiciness:number; saltiness:number; sweetness:number }
-  size?: number
-}) {
-  const c = size/2, r = size/2-24
-  const vals = [scores.taste, scores.portion, scores.value, scores.spiciness, scores.saltiness, scores.sweetness]
-  const emojis = ['🍽️','🍱','💰','🌶️','🧂','🍯']
-  const clrs = ['#FF5A3D','#FF9800','#4CAF50','#F44336','#2196F3','#9C27B0']
-  const labels = ['맛','양','가성비','맵기','짠기','단기']
-  const pt = (i:number, rad:number) => {
-    const a = Math.PI*2*i/6 - Math.PI/2
-    return { x: c+rad*Math.cos(a), y: c+rad*Math.sin(a) }
-  }
-  const bg = [2,4,6,8,10].map(l => Array.from({length:6},(_,i)=>pt(i,r*l/10)).map(p=>`${p.x},${p.y}`).join(' '))
-  const dp = vals.map((v,i) => pt(i, r*Math.max(0,Math.min(10,v||5))/10))
+// 5번: 맛 점수 팝업 모달
+function TasteModal({ review, onClose }: { review: any; onClose: () => void }) {
+  const items = [
+    { label:'맛',    emoji:'🍽️', value:review.taste_score||5,   color:'#FF5A3D' },
+    { label:'양',    emoji:'🍱', value:review.portion_score||5,  color:'#FF9800' },
+    { label:'가성비', emoji:'💰', value:review.value_score||5,    color:'#4CAF50' },
+    { label:'맵기',  emoji:'🌶️', value:review.spiciness||5,      color:'#F44336' },
+    { label:'짠기',  emoji:'🧂', value:review.saltiness||5,       color:'#2196F3' },
+    { label:'단기',  emoji:'🍯', value:review.sweetness||5,       color:'#9C27B0' },
+  ]
+  const total = Math.round(items.reduce((s,i)=>s+i.value,0)/items.length*10)/10
+
   return (
-    <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
-      <svg width={size} height={size} style={{overflow:'visible'}}>
-        {bg.map((pts,i)=><polygon key={i} points={pts} fill="none" stroke="#eee" strokeWidth="1"/>)}
-        {Array.from({length:6},(_,i)=>{const e=pt(i,r);return<line key={i} x1={c} y1={c} x2={e.x} y2={e.y} stroke="#eee" strokeWidth="1"/>})}
-        <polygon points={dp.map(p=>`${p.x},${p.y}`).join(' ')} fill="rgba(255,90,61,0.15)" stroke="#FF5A3D" strokeWidth="2"/>
-        {dp.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="4" fill={clrs[i]} stroke="white" strokeWidth="1.5"/>)}
-        {Array.from({length:6},(_,i)=>{const lp=pt(i,r+18);return<text key={i} x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="middle" fontSize="12">{emojis[i]}</text>})}
-      </svg>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'3px 10px',marginTop:'6px',width:'100%'}}>
-        {labels.map((lb,i)=>(
-          <div key={lb} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'10px'}}>
-            <div style={{width:'7px',height:'7px',borderRadius:'50%',background:clrs[i],flexShrink:0}}/>
-            <span style={{color:'#888'}}>{lb}</span>
-            <span style={{color:clrs[i],fontWeight:'700'}}>{vals[i]||5}</span>
+    <div onClick={onClose} style={{
+      position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',
+      backdropFilter:'blur(4px)',zIndex:999,
+      display:'flex',alignItems:'flex-end',justifyContent:'center'
+    }}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'white',borderRadius:'24px 24px 0 0',
+        padding:'24px 20px 48px',width:'100%',maxWidth:'480px',
+        boxShadow:'0 -8px 40px rgba(0,0,0,0.18)'
+      }}>
+        <div style={{width:'36px',height:'4px',background:'#e0e0e0',borderRadius:'2px',margin:'0 auto 20px'}}/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+          <h3 style={{margin:0,fontSize:'17px',fontWeight:'800',color:'#1A1A1A'}}>🍴 맛 상세 점수</h3>
+          <div style={{background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',color:'white',borderRadius:'20px',padding:'6px 16px',fontSize:'15px',fontWeight:'800'}}>
+            총점 {total}
+          </div>
+        </div>
+        {items.map(item=>(
+          <div key={item.label} style={{marginBottom:'14px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
+              <span style={{fontSize:'14px',fontWeight:'600',color:'#333'}}>{item.emoji} {item.label}</span>
+              <span style={{fontSize:'14px',fontWeight:'800',color:item.color}}>{item.value} / 10</span>
+            </div>
+            <div style={{height:'10px',background:'#f0f0f0',borderRadius:'5px',overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${item.value*10}%`,background:`linear-gradient(90deg,${item.color}88,${item.color})`,borderRadius:'5px',transition:'width 0.5s ease'}}/>
+            </div>
           </div>
         ))}
+        {review.content && (
+          <div style={{marginTop:'16px',background:'#fafafa',borderRadius:'14px',padding:'14px'}}>
+            <p style={{margin:'0 0 6px',fontSize:'11px',color:'#bbb',fontWeight:'600'}}>✍️ 리뷰</p>
+            <p style={{margin:0,fontSize:'14px',color:'#444',lineHeight:'1.65'}}>{review.content}</p>
+          </div>
+        )}
+        {((review.texture_tags?.length||0)+(review.situation_tags?.length||0))>0 && (
+          <div style={{display:'flex',flexWrap:'wrap',gap:'6px',marginTop:'12px'}}>
+            {review.texture_tags?.map((t:string)=><span key={t} style={{background:'#fff3f0',color:'#FF5A3D',borderRadius:'20px',padding:'4px 12px',fontSize:'12px',fontWeight:'600'}}>{t}</span>)}
+            {review.situation_tags?.map((t:string)=><span key={t} style={{background:'#f0f7ff',color:'#2196F3',borderRadius:'20px',padding:'4px 12px',fontSize:'12px',fontWeight:'600'}}>{t}</span>)}
+          </div>
+        )}
+        <button onClick={onClose} style={{marginTop:'20px',width:'100%',padding:'14px',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',color:'white',border:'none',borderRadius:'14px',fontSize:'15px',fontWeight:'700',cursor:'pointer'}}>닫기</button>
       </div>
     </div>
   )
 }
 
+// 1번: 팔로우 버튼
 function FollowButton({ myId, targetId, followingIds, onToggle }: {
-  myId: string; targetId: string; followingIds: string[]
-  onToggle: (id: string, follow: boolean) => void
+  myId:string; targetId:string; followingIds:string[]
+  onToggle:(id:string,follow:boolean)=>void
 }) {
   const supabase = createClient()
   const isFollowing = followingIds.includes(targetId)
@@ -62,22 +85,22 @@ function FollowButton({ myId, targetId, followingIds, onToggle }: {
     e.stopPropagation()
     setBusy(true)
     if (isFollowing) {
-      await supabase.from('follows').delete().eq('follower_id', myId).eq('following_id', targetId)
-      onToggle(targetId, false)
+      await supabase.from('follows').delete().eq('follower_id',myId).eq('following_id',targetId)
+      onToggle(targetId,false)
     } else {
-      await supabase.from('follows').insert({ follower_id: myId, following_id: targetId })
-      onToggle(targetId, true)
+      await supabase.from('follows').insert({ follower_id:myId, following_id:targetId })
+      onToggle(targetId,true)
     }
     setBusy(false)
   }
   return (
     <button onClick={toggle} disabled={busy} style={{
-      padding:'4px 12px', borderRadius:'20px', cursor:'pointer',
-      border: isFollowing ? '1.5px solid #eee' : 'none',
-      background: isFollowing ? 'white' : 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
+      width:'32px',height:'32px',borderRadius:'50%',border:'none',cursor:'pointer',
+      background: isFollowing ? '#f0f0f0' : 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
       color: isFollowing ? '#999' : 'white',
-      fontSize:'11px', fontWeight:'700', flexShrink:0
-    }}>{busy ? '...' : isFollowing ? '팔로잉 ✓' : '+ 팔로우'}</button>
+      fontSize:'16px',display:'flex',alignItems:'center',justifyContent:'center',
+      flexShrink:0,transition:'all 0.2s'
+    }}>{busy ? '…' : isFollowing ? '✓' : '+'}</button>
   )
 }
 
@@ -96,13 +119,15 @@ interface Review {
 export default function FeedPage() {
   const router = useRouter()
   const supabase = createClient()
-  const [reviews,      setReviews]      = useState<Review[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [expandedId,   setExpandedId]   = useState<string|null>(null)
-  const [tab,          setTab]          = useState<'all'|'following'|'taste'>('all')
-  const [myUserId,     setMyUserId]     = useState<string|null>(null)
-  const [followingIds, setFollowingIds] = useState<string[]>([])
-  const [myProfile,    setMyProfile]    = useState<any>(null)
+  const [reviews,       setReviews]       = useState<Review[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [tab,           setTab]           = useState<'all'|'following'|'taste'>('all')
+  const [myUserId,      setMyUserId]      = useState<string|null>(null)
+  const [followingIds,  setFollowingIds]  = useState<string[]>([])
+  const [myProfile,     setMyProfile]     = useState<any>(null)
+  const [likedIds,      setLikedIds]      = useState<string[]>([])
+  const [savedStoreIds, setSavedStoreIds] = useState<string[]>([])
+  const [modalReview,   setModalReview]   = useState<Review|null>(null)
 
   useEffect(()=>{
     const load = async () => {
@@ -110,40 +135,40 @@ export default function FeedPage() {
         const { data:{ user } } = await supabase.auth.getUser()
         if (user) {
           setMyUserId(user.id)
-          const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', user.id)
+          const { data:fol } = await supabase.from('follows').select('following_id').eq('follower_id',user.id)
           setFollowingIds(fol?.map(f=>f.following_id)||[])
-          const { data: tp } = await supabase.from('user_taste_profile')
-            .select('spice_level,pickiness,style_pref,preferred_cuisines').eq('user_id', user.id).single()
+          const { data:tp } = await supabase.from('user_taste_profile').select('spice_level,pickiness,style_pref,preferred_cuisines').eq('user_id',user.id).single()
           setMyProfile(tp)
+          // 좋아요 목록
+          const { data:likes } = await supabase.from('review_likes').select('review_id').eq('user_id',user.id)
+          setLikedIds(likes?.map(l=>l.review_id)||[])
+          // 저장된 가게 목록
+          const { data:saved } = await supabase.from('saved_stores').select('store_id').eq('user_id',user.id)
+          setSavedStoreIds(saved?.map(s=>String(s.store_id))||[])
         }
       } catch {}
 
-      const { data: revData, error } = await supabase
-        .from('reviews').select('*, stores(name,category,address)')
+      const { data:revData, error } = await supabase
+        .from('reviews').select('*,stores(name,category,address)')
         .order('created_at',{ ascending:false }).limit(50)
-      if (error || !revData) { setLoading(false); return }
+      if (error||!revData) { setLoading(false); return }
 
       const userIds = [...new Set(revData.map((r:any)=>r.user_id))]
-      const { data: profiles } = await supabase
-        .from('user_taste_profile')
-        .select('user_id,nickname,spice_level,pickiness,style_pref,preferred_cuisines')
-        .in('user_id', userIds)
-      const pMap: Record<string,any> = {}
+      const { data:profiles } = await supabase.from('user_taste_profile')
+        .select('user_id,nickname,spice_level,pickiness,style_pref,preferred_cuisines').in('user_id',userIds)
+      const pMap:Record<string,any> = {}
       profiles?.forEach(p=>{ pMap[p.user_id]=p })
-
-      setReviews(revData.map((r:any)=>({ ...r, user_taste_profile: pMap[r.user_id]||{ nickname:'익명' } })) as Review[])
+      setReviews(revData.map((r:any)=>({ ...r, user_taste_profile:pMap[r.user_id]||{ nickname:'익명' } })) as Review[])
       setLoading(false)
     }
     load()
   },[])
 
-  function tasteMatch(my:any, other:any): number {
+  function tasteMatch(my:any,other:any):number {
     if (!my||!other) return 0
-    const diff = Math.abs((my.spice_level||5)-(other.spice_level||5))
-      + Math.abs((my.pickiness||5)-(other.pickiness||5))
-      + Math.abs((my.style_pref||5)-(other.style_pref||5))
-    const bonus = (my.preferred_cuisines||[]).some((c:string)=>(other.preferred_cuisines||[]).includes(c)) ? 20 : 0
-    return Math.max(0, 100 - diff*5 + bonus)
+    const diff = Math.abs((my.spice_level||5)-(other.spice_level||5))+Math.abs((my.pickiness||5)-(other.pickiness||5))+Math.abs((my.style_pref||5)-(other.style_pref||5))
+    const bonus = (my.preferred_cuisines||[]).some((c:string)=>(other.preferred_cuisines||[]).includes(c))?20:0
+    return Math.max(0,100-diff*5+bonus)
   }
 
   const displayed = tab==='following'
@@ -151,6 +176,39 @@ export default function FeedPage() {
     : tab==='taste'
     ? [...reviews].sort((a,b)=>tasteMatch(myProfile,b.user_taste_profile)-tasteMatch(myProfile,a.user_taste_profile))
     : reviews
+
+  // 1번: 좋아요 토글
+  const toggleLike = async (e:React.MouseEvent, reviewId:string) => {
+    e.stopPropagation()
+    if (!myUserId) { router.push('/login'); return }
+    const liked = likedIds.includes(reviewId)
+    if (liked) {
+      await supabase.from('review_likes').delete().eq('user_id',myUserId).eq('review_id',reviewId)
+      setLikedIds(prev=>prev.filter(id=>id!==reviewId))
+    } else {
+      await supabase.from('review_likes').insert({ user_id:myUserId, review_id:reviewId })
+      setLikedIds(prev=>[...prev,reviewId])
+    }
+  }
+
+  // 1번: 가게 저장 토글
+  const toggleSaveStore = async (e:React.MouseEvent, review:Review) => {
+    e.stopPropagation()
+    if (!myUserId) { router.push('/login'); return }
+    const storeId = String(review.store_id)
+    const saved = savedStoreIds.includes(storeId)
+    if (saved) {
+      await supabase.from('saved_stores').delete().eq('user_id',myUserId).eq('store_id',storeId)
+      setSavedStoreIds(prev=>prev.filter(id=>id!==storeId))
+    } else {
+      await supabase.from('saved_stores').insert({
+        user_id:myUserId, store_id:storeId,
+        store_name:review.stores?.name||'', store_category:review.stores?.category||'',
+        store_address:review.stores?.address||''
+      })
+      setSavedStoreIds(prev=>[...prev,storeId])
+    }
+  }
 
   if (loading) return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:'12px'}}>
@@ -162,138 +220,135 @@ export default function FeedPage() {
   return (
     <div style={{minHeight:'100vh',background:'#f5f5f5',paddingBottom:'80px'}}>
 
-      {/* 헤더 */}
-      <div style={{
-        background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-        padding:'48px 20px 20px',
-        display:'flex',justifyContent:'space-between',alignItems:'flex-end'
-      }}>
-        <div>
+      {/* 5번 팝업 */}
+      {modalReview && <TasteModal review={modalReview} onClose={()=>setModalReview(null)}/>}
+
+      {/* 헤더 - 2번: 로고 클릭 시 맵으로 이동 */}
+      <div style={{background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',padding:'48px 20px 20px',display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+        <div onClick={()=>router.push('/map')} style={{cursor:'pointer'}}>
           <h1 style={{margin:0,fontSize:'22px',fontWeight:'800',color:'white',letterSpacing:'-0.5px'}}>🍜 맛지도 피드</h1>
-          <p style={{margin:'4px 0 0',fontSize:'13px',color:'rgba(255,255,255,0.8)'}}>리뷰 {reviews.length}개</p>
+          <p style={{margin:'4px 0 0',fontSize:'12px',color:'rgba(255,255,255,0.7)'}}>탭해서 지도로 이동 · 리뷰 {reviews.length}개</p>
         </div>
-        <button onClick={()=>router.push('/review/write')} style={{
-          background:'rgba(255,255,255,0.25)',backdropFilter:'blur(8px)',
-          color:'white',border:'1.5px solid rgba(255,255,255,0.5)',
-          borderRadius:'20px',padding:'8px 18px',fontSize:'13px',fontWeight:'700',cursor:'pointer'
-        }}>+ 리뷰 작성</button>
+        <button onClick={()=>router.push('/review/write')} style={{background:'rgba(255,255,255,0.25)',backdropFilter:'blur(8px)',color:'white',border:'1.5px solid rgba(255,255,255,0.5)',borderRadius:'20px',padding:'8px 18px',fontSize:'13px',fontWeight:'700',cursor:'pointer'}}>+ 리뷰 작성</button>
       </div>
 
       {/* 탭 */}
       <div style={{background:'white',display:'flex',borderBottom:'1px solid #f0f0f0',position:'sticky',top:0,zIndex:10}}>
         {([['all','🕐 전체'],['following','👥 팔로잉'],['taste','👅 입맛순']] as const).map(([key,label])=>(
-          <button key={key} onClick={()=>setTab(key)} style={{
-            flex:1,padding:'13px 0',border:'none',background:'transparent',
-            fontSize:'13px',fontWeight:tab===key?'700':'400',
-            color:tab===key?'#FF5A3D':'#aaa',cursor:'pointer',
-            borderBottom:tab===key?'2px solid #FF5A3D':'2px solid transparent',transition:'all 0.2s'
-          }}>{label}</button>
+          <button key={key} onClick={()=>setTab(key)} style={{flex:1,padding:'13px 0',border:'none',background:'transparent',fontSize:'13px',fontWeight:tab===key?'700':'400',color:tab===key?'#FF5A3D':'#aaa',cursor:'pointer',borderBottom:tab===key?'2px solid #FF5A3D':'2px solid transparent',transition:'all 0.2s'}}>{label}</button>
         ))}
       </div>
 
       {/* 팔로잉 빈 상태 */}
-      {tab==='following' && displayed.length===0 && (
+      {tab==='following'&&displayed.length===0&&(
         <div style={{textAlign:'center',padding:'60px 20px'}}>
           <div style={{fontSize:'60px',marginBottom:'16px'}}>👥</div>
           <p style={{color:'#999',fontSize:'16px'}}>팔로잉한 사람의 리뷰가 없어요</p>
-          <button onClick={()=>router.push('/users')} style={{
-            marginTop:'16px',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-            color:'white',border:'none',borderRadius:'14px',padding:'12px 28px',fontSize:'14px',fontWeight:'700',cursor:'pointer'
-          }}>사용자 탐색</button>
+          <button onClick={()=>router.push('/users')} style={{marginTop:'16px',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',color:'white',border:'none',borderRadius:'14px',padding:'12px 28px',fontSize:'14px',fontWeight:'700',cursor:'pointer'}}>사용자 탐색</button>
         </div>
       )}
 
       {/* 리뷰 없음 */}
-      {tab!=='following' && displayed.length===0 && !loading && (
+      {tab!=='following'&&displayed.length===0&&!loading&&(
         <div style={{textAlign:'center',padding:'80px 20px'}}>
           <div style={{fontSize:'64px',marginBottom:'16px'}}>🍽️</div>
           <p style={{color:'#bbb',fontSize:'16px',fontWeight:'500'}}>아직 리뷰가 없어요</p>
-          <button onClick={()=>router.push('/review/write')} style={{
-            marginTop:'20px',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-            color:'white',border:'none',borderRadius:'14px',padding:'12px 28px',fontSize:'14px',fontWeight:'700',cursor:'pointer'
-          }}>리뷰 작성하기</button>
+          <button onClick={()=>router.push('/review/write')} style={{marginTop:'20px',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',color:'white',border:'none',borderRadius:'14px',padding:'12px 28px',fontSize:'14px',fontWeight:'700',cursor:'pointer'}}>리뷰 작성하기</button>
         </div>
       )}
 
       {/* 리뷰 카드 */}
-      {displayed.length>0 && (
+      {displayed.length>0&&(
         <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:'18px'}}>
           {displayed.map(review=>{
-            const photos = parsePhotos(review.photos)
-            const isExp  = expandedId===review.id
-            const avg    = Math.round(((review.taste_score||5)+(review.portion_score||5)+(review.value_score||5))/3*10)/10
-            const init   = (review.user_taste_profile?.nickname||'익')[0]
+            const photos  = parsePhotos(review.photos)
+            const items   = [review.taste_score||5, review.portion_score||5, review.value_score||5, review.spiciness||5, review.saltiness||5, review.sweetness||5]
+            const total   = Math.round(items.reduce((s,v)=>s+v,0)/items.length*10)/10
+            const init    = (review.user_taste_profile?.nickname||'익')[0]
+            const isLiked = likedIds.includes(review.id)
+            const isSaved = savedStoreIds.includes(String(review.store_id))
+
             return (
-              <div key={review.id} onClick={()=>setExpandedId(isExp?null:review.id)}
-                style={{background:'white',borderRadius:'22px',overflow:'hidden',cursor:'pointer',boxShadow:'0 4px 20px rgba(0,0,0,0.07)'}}>
+              <div key={review.id} style={{background:'white',borderRadius:'22px',overflow:'hidden',boxShadow:'0 4px 20px rgba(0,0,0,0.07)'}}>
 
-                {/* 사진 or 헤더 */}
-                {photos.length>0 ? (
-                  <div style={{position:'relative',width:'100%',aspectRatio:'4/3',background:'#efefef'}}>
-                    <img src={photos[0]} alt="리뷰 사진" style={{width:'100%',height:'100%',objectFit:'cover'}}
-                      onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none'}}/>
-                    {photos.length>1 && (
-                      <div style={{position:'absolute',top:'12px',right:'12px',background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',color:'white',borderRadius:'14px',padding:'3px 9px',fontSize:'11px',fontWeight:'700'}}>+{photos.length-1}</div>
-                    )}
-                    <div style={{position:'absolute',bottom:0,left:0,right:0,background:'linear-gradient(transparent,rgba(0,0,0,0.72))',padding:'24px 16px 14px'}}>
-                      <p style={{margin:0,color:'white',fontWeight:'800',fontSize:'17px',letterSpacing:'-0.3px'}}>{review.stores?.name||'가게 이름 없음'}</p>
-                      <p style={{margin:'3px 0 0',color:'rgba(255,255,255,0.75)',fontSize:'12px'}}>{review.stores?.category} · ⭐ {avg}</p>
+                {/* 5번: 사진 + 총점만 표시, 클릭 시 팝업 */}
+                <div onClick={()=>setModalReview(review)} style={{cursor:'pointer'}}>
+                  {photos.length>0 ? (
+                    <div style={{position:'relative',width:'100%',aspectRatio:'4/3',background:'#efefef'}}>
+                      <img src={photos[0]} alt="리뷰 사진" style={{width:'100%',height:'100%',objectFit:'cover'}}
+                        onError={e=>{(e.target as HTMLImageElement).parentElement!.style.display='none'}}/>
+                      {/* 총점 배지 */}
+                      <div style={{position:'absolute',top:'12px',left:'12px',background:'rgba(0,0,0,0.65)',backdropFilter:'blur(4px)',color:'white',borderRadius:'20px',padding:'5px 12px',fontSize:'13px',fontWeight:'800'}}>
+                        ⭐ {total}
+                      </div>
+                      {photos.length>1&&(
+                        <div style={{position:'absolute',top:'12px',right:'12px',background:'rgba(0,0,0,0.55)',color:'white',borderRadius:'14px',padding:'3px 9px',fontSize:'11px',fontWeight:'700'}}>+{photos.length-1}</div>
+                      )}
+                      <div style={{position:'absolute',bottom:0,left:0,right:0,background:'linear-gradient(transparent,rgba(0,0,0,0.72))',padding:'24px 16px 14px'}}>
+                        <p style={{margin:0,color:'white',fontWeight:'800',fontSize:'17px',letterSpacing:'-0.3px'}}>{review.stores?.name||'가게 이름 없음'}</p>
+                        <p style={{margin:'3px 0 0',color:'rgba(255,255,255,0.75)',fontSize:'12px'}}>{review.stores?.category}</p>
+                      </div>
                     </div>
+                  ) : (
+                    <div style={{background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',padding:'22px 18px',position:'relative'}}>
+                      <div style={{position:'absolute',top:'14px',right:'16px',background:'rgba(255,255,255,0.25)',borderRadius:'20px',padding:'4px 12px',fontSize:'13px',fontWeight:'800',color:'white'}}>⭐ {total}</div>
+                      <p style={{margin:0,color:'white',fontWeight:'800',fontSize:'17px'}}>{review.stores?.name||'가게 이름 없음'}</p>
+                      <p style={{margin:'4px 0 0',color:'rgba(255,255,255,0.8)',fontSize:'12px'}}>{review.stores?.category}</p>
+                    </div>
+                  )}
+                  {/* 점수 미리보기 힌트 */}
+                  <div style={{padding:'8px 16px 0',display:'flex',alignItems:'center',gap:'6px'}}>
+                    <span style={{fontSize:'11px',color:'#bbb'}}>탭해서 맛 점수 상세 보기 →</span>
                   </div>
-                ) : (
-                  <div style={{background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',padding:'22px 18px'}}>
-                    <p style={{margin:0,color:'white',fontWeight:'800',fontSize:'17px'}}>{review.stores?.name||'가게 이름 없음'}</p>
-                    <p style={{margin:'4px 0 0',color:'rgba(255,255,255,0.8)',fontSize:'12px'}}>{review.stores?.category} · ⭐ {avg}</p>
-                  </div>
-                )}
+                </div>
 
-                {/* 본문 */}
-                <div style={{padding:'16px 18px'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+                {/* 유저 정보 + 액션 버튼들 */}
+                <div style={{padding:'12px 16px 16px'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    {/* 유저 */}
                     <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                      <div style={{width:'34px',height:'34px',borderRadius:'50%',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'14px',fontWeight:'800',flexShrink:0}}>{init}</div>
+                      <div style={{width:'36px',height:'36px',borderRadius:'50%',background:'linear-gradient(135deg,#FF5A3D,#FF8C42)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'15px',fontWeight:'800',flexShrink:0}}>{init}</div>
                       <div>
                         <p style={{margin:0,fontSize:'13px',fontWeight:'700',color:'#222'}}>{review.user_taste_profile?.nickname||'익명'}</p>
                         <p style={{margin:0,fontSize:'11px',color:'#bbb'}}>{new Date(review.created_at).toLocaleDateString('ko-KR')}</p>
                       </div>
                     </div>
+
+                    {/* 1번: 액션 버튼들 (좋아요, 저장, 팔로우) */}
                     <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                      {review.star_score ? <span style={{fontSize:'13px'}}>{'⭐'.repeat(review.star_score)}</span> : null}
-                      {review.want_to_go_back && <span style={{background:'#FF5A3D',color:'white',borderRadius:'10px',padding:'2px 9px',fontSize:'10px',fontWeight:'700'}}>또 갈래요!</span>}
-                      {myUserId && review.user_id!==myUserId && (
+                      {/* 좋아요 */}
+                      <button onClick={e=>toggleLike(e,review.id)} style={{width:'36px',height:'36px',borderRadius:'50%',border:'1.5px solid',borderColor:isLiked?'#FF5A3D':'#eee',background:isLiked?'#fff3f0':'white',fontSize:'17px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        {isLiked?'❤️':'🤍'}
+                      </button>
+                      {/* 가게 저장 */}
+                      <button onClick={e=>toggleSaveStore(e,review)} style={{width:'36px',height:'36px',borderRadius:'50%',border:'1.5px solid',borderColor:isSaved?'#FF9800':'#eee',background:isSaved?'#fff8f0':'white',fontSize:'17px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        {isSaved?'🔖':'🏷️'}
+                      </button>
+                      {/* 팔로우 */}
+                      {myUserId&&review.user_id!==myUserId&&(
                         <FollowButton myId={myUserId} targetId={review.user_id} followingIds={followingIds}
                           onToggle={(id,f)=>setFollowingIds(prev=>f?[...prev,id]:prev.filter(x=>x!==id))}/>
                       )}
                     </div>
                   </div>
 
-                  {review.menu_name && (
-                    <p style={{margin:'0 0 10px',fontSize:'13px',color:'#555',background:'#fff5f3',borderRadius:'10px',padding:'7px 12px',display:'inline-block'}}>🍴 {review.menu_name}</p>
-                  )}
-                  {review.content && (
-                    <p style={{margin:'0 0 12px',fontSize:'14px',color:'#444',lineHeight:'1.65',display:'-webkit-box',WebkitLineClamp:isExp?'unset':2,WebkitBoxOrient:'vertical' as any,overflow:'hidden'}}>{review.content}</p>
-                  )}
-                  {((review.texture_tags?.length||0)+(review.situation_tags?.length||0))>0 && (
-                    <div style={{display:'flex',flexWrap:'wrap',gap:'6px',marginBottom:'12px'}}>
-                      {review.texture_tags?.map(t=><span key={t} style={{background:'#fff3f0',color:'#FF5A3D',borderRadius:'20px',padding:'3px 10px',fontSize:'11px',fontWeight:'600'}}>{t}</span>)}
-                      {review.situation_tags?.map(t=><span key={t} style={{background:'#f0f7ff',color:'#2196F3',borderRadius:'20px',padding:'3px 10px',fontSize:'11px',fontWeight:'600'}}>{t}</span>)}
-                    </div>
+                  {/* 메뉴 이름 */}
+                  {review.menu_name&&(
+                    <p style={{margin:'10px 0 0',fontSize:'13px',color:'#555',background:'#fff5f3',borderRadius:'10px',padding:'7px 12px',display:'inline-block'}}>🍴 {review.menu_name}</p>
                   )}
 
-                  {/* 레이더 차트 */}
-                  <div style={{background:'#fafafa',borderRadius:'16px',padding:'16px',display:'flex',flexDirection:'column',alignItems:'center'}}>
-                    <p style={{margin:'0 0 10px',fontSize:'11px',color:'#ccc',fontWeight:'600',letterSpacing:'0.5px'}}>🕸️ 맛 레이더</p>
-                    <RadarChart scores={{taste:review.taste_score||5,portion:review.portion_score||5,value:review.value_score||5,spiciness:review.spiciness||5,saltiness:review.saltiness||5,sweetness:review.sweetness||5}} size={140}/>
+                  {/* 재방문 + 별점 */}
+                  <div style={{display:'flex',gap:'8px',marginTop:'10px',flexWrap:'wrap'}}>
+                    {review.star_score&&review.star_score>0&&(
+                      <span style={{fontSize:'13px',background:'#fffbe6',borderRadius:'10px',padding:'4px 10px'}}>{'⭐'.repeat(review.star_score)}</span>
+                    )}
+                    {review.want_to_go_back&&(
+                      <span style={{background:'#fff3f0',color:'#FF5A3D',borderRadius:'10px',padding:'4px 10px',fontSize:'12px',fontWeight:'700'}}>🙋 또 갈래요!</span>
+                    )}
+                    {review.want_to_go_back===false&&(
+                      <span style={{background:'#f5f5f5',color:'#999',borderRadius:'10px',padding:'4px 10px',fontSize:'12px',fontWeight:'700'}}>🙅 글쎄요</span>
+                    )}
                   </div>
-
-                  {isExp && photos.length>1 && (
-                    <div style={{display:'flex',gap:'8px',overflowX:'auto',marginTop:'14px',paddingBottom:'4px'}}>
-                      {photos.slice(1).map((url,i)=><img key={i} src={url} alt={`사진${i+2}`} style={{width:'82px',height:'82px',objectFit:'cover',borderRadius:'12px',flexShrink:0}}/>)}
-                    </div>
-                  )}
-                  {(review.content?.length||0)>60 && (
-                    <p style={{margin:'10px 0 0',fontSize:'12px',color:'#FF8C42',fontWeight:'700',textAlign:'center'}}>{isExp?'접기 ▲':'더보기 ▼'}</p>
-                  )}
                 </div>
               </div>
             )
