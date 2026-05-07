@@ -1,365 +1,386 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-interface UserProfile {
-  user_id: string
-  nickname: string
-  bio: string | null
-  taste_mbti: string | null
+// ─── 타입 정의 ─────────────────────────────────────────────────────────────
+interface StoreInfo {
+  id: string
+  name: string
+  category: string | null
+  address: string | null
 }
 
 interface Review {
   id: string
-  menu_name: string | null
-  content: string | null
-  one_line_review: string | null
-  star_score: number | null
-  taste_score: number
-  portion_score: number
-  value_score: number
-  spiciness: number | null
-  saltiness: number | null
-  sweetness: number | null
-  texture_tags: string[] | null
-  situation_tags: string[] | null
-  photos: string[] | null
   created_at: string
-  stores: { name: string; category: string } | null
+  menu_name: string | null
+  one_line_review: string | null
+  content: string | null
+  total_rating: number | null
+  photos: string | string[] | null
+  tags: string[] | null
+  store_id: string
+  stores: StoreInfo | null
 }
 
-function TasteBar({ label, emoji, value, color }: {
-  label: string; emoji: string; value: number; color: string
-}) {
+interface UserProfile {
+  id: string
+  user_id: string
+  nickname: string | null
+  bio: string | null
+  taste_mbti: string | null
+  taste_spicy: number | null
+  taste_salty: number | null
+  taste_sweet: number | null
+  taste_sour: number | null
+  taste_rich: number | null
+}
+
+// ─── 헬퍼 함수 ──────────────────────────────────────────────────────────────
+function parsePhotos(photos: string | string[] | null): string[] {
+  if (!photos) return []
+  if (Array.isArray(photos)) return photos
+  try {
+    const parsed = JSON.parse(photos)
+    return Array.isArray(parsed) ? parsed : [photos]
+  } catch {
+    return [photos]
+  }
+}
+
+// ─── TasteBar 컴포넌트 ───────────────────────────────────────────────────────
+function TasteBar({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-      <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>{emoji}</span>
-      <span style={{ fontSize: '12px', color: '#555', width: '40px', fontWeight: '600' }}>{label}</span>
-      <div style={{ flex: 1, height: '6px', borderRadius: '3px', background: '#f0f0f0', overflow: 'hidden' }}>
-        <div style={{ width: `${value * 10}%`, height: '100%', background: color, borderRadius: '3px' }} />
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <span style={{ fontSize: '13px', color: '#555' }}>{label}</span>
+        <span style={{ fontSize: '13px', fontWeight: 600, color }}>{value}/5</span>
       </div>
-      <span style={{ fontSize: '12px', fontWeight: '700', color, width: '20px', textAlign: 'right' }}>{value}</span>
+      <div style={{ background: '#f0f0f0', borderRadius: '4px', height: '8px' }}>
+        <div style={{
+          width: `${(value / 5) * 100}%`,
+          height: '100%',
+          background: color,
+          borderRadius: '4px',
+          transition: 'width 0.5s ease',
+        }} />
+      </div>
     </div>
   )
 }
 
-function parsePhotos(raw: unknown): string[] {
-  if (!raw) return []
-  if (Array.isArray(raw)) return (raw as unknown[]).filter((x): x is string => typeof x === 'string')
-  if (typeof raw === 'string') {
-    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : [] } catch { return [] }
-  }
-  return []
-}
-
+// ─── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 export default function UserProfilePage() {
-  const router   = useRouter()
-  const params   = useParams()
+  const router = useRouter()
+  const params = useParams()
+  const userId = params?.userId as string
   const supabase = createClient()
 
-  const targetUserId = params.userId as string
-
-  const [profile,        setProfile]        = useState<UserProfile | null>(null)
-  const [reviews,        setReviews]        = useState<Review[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [followerCount,  setFollowerCount]  = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState(true)
+  const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
-  const [isFollowing,    setIsFollowing]    = useState(false)
-  const [currentUser,    setCurrentUser]    = useState<string | null>(null)
-  const [followLoading,  setFollowLoading]  = useState(false)
-  const [expandedId,     setExpandedId]     = useState<string | null>(null)
-  const [isMe,           setIsMe]           = useState(false)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+  const [expandedReview, setExpandedReview] = useState<string | null>(null)
 
   useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const uid = user?.id ?? null
-      setCurrentUser(uid)
-      setIsMe(uid === targetUserId)
+    if (userId) loadUserProfile()
+  }, [userId])
 
-      const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }, { data: myFollow }] = await Promise.all([
-        supabase.from('user_taste_profile').select('*').eq('user_id', targetUserId).single(),
+  async function loadUserProfile() {
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setCurrentUserId(user?.id ?? null)
+
+      const [profileRes, reviewsRes, followerRes, followingRes] = await Promise.all([
+        supabase.from('user_taste_profile').select('*').eq('user_id', userId).single(),
         supabase.from('reviews')
           .select(`
-            id, menu_name, content, one_line_review,
-            star_score, taste_score, portion_score, value_score,
-            spiciness, saltiness, sweetness,
-            texture_tags, situation_tags, photos, created_at,
-            stores(name, category)
+            id, created_at, menu_name, one_line_review, content,
+            total_rating, photos, tags, store_id,
+            stores(id, name, category, address)
           `)
-          .eq('user_id', targetUserId)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(30),
-        supabase.from('follows').select('id').eq('following_id', targetUserId),
-        supabase.from('follows').select('id').eq('follower_id', targetUserId),
-        uid
-          ? supabase.from('follows').select('id').eq('follower_id', uid).eq('following_id', targetUserId).maybeSingle()
-          : Promise.resolve({ data: null }),
+        supabase.from('follows').select('id', { count: 'exact' }).eq('following_id', userId),
+        supabase.from('follows').select('id', { count: 'exact' }).eq('follower_id', userId),
       ])
 
-      setProfile(p as UserProfile | null)
+      if (profileRes.data) setProfile(profileRes.data)
 
-      /* stores 배열→객체 변환 */
-      const parsedReviews: Review[] = (rv || []).map((r: any) => ({
-        id:              r.id,
-        menu_name:       r.menu_name,
-        content:         r.content,
-        one_line_review: r.one_line_review,
-        star_score:      r.star_score,
-        taste_score:     r.taste_score     ?? 5,
-        portion_score:   r.portion_score   ?? 5,
-        value_score:     r.value_score     ?? 5,
-        spiciness:       r.spiciness       ?? 5,
-        saltiness:       r.saltiness       ?? 5,
-        sweetness:       r.sweetness       ?? 5,
-        texture_tags:    r.texture_tags,
-        situation_tags:  r.situation_tags,
-        photos:          r.photos,
-        created_at:      r.created_at,
-        stores: Array.isArray(r.stores)
-          ? (r.stores[0] ?? null)
-          : (r.stores ?? null),
-      }))
+      // stores 배열 → 단일 객체 변환
+      if (reviewsRes.data) {
+        const mapped: Review[] = reviewsRes.data.map((r: any) => ({
+          ...r,
+          stores: Array.isArray(r.stores) ? (r.stores[0] ?? null) : (r.stores ?? null),
+        }))
+        setReviews(mapped)
+      }
 
-      setReviews(parsedReviews)
-      setFollowerCount(fwer?.length ?? 0)
-      setFollowingCount(fwing?.length ?? 0)
-      setIsFollowing(!!myFollow)
+      setFollowerCount(followerRes.count ?? 0)
+      setFollowingCount(followingRes.count ?? 0)
+
+      // 팔로우 여부
+      if (user && user.id !== userId) {
+        const { data: followData } = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', user.id)
+          .eq('following_id', userId)
+          .maybeSingle()
+        setIsFollowing(!!followData)
+      }
+    } catch (err) {
+      console.error('유저 프로필 로드 에러:', err)
+    } finally {
       setLoading(false)
     }
-    load()
-  }, [targetUserId])
-
-  const toggleFollow = async () => {
-    if (!currentUser || isMe) return
-    setFollowLoading(true)
-    if (isFollowing) {
-      await supabase.from('follows').delete().eq('follower_id', currentUser).eq('following_id', targetUserId)
-      setFollowerCount(c => c - 1)
-    } else {
-      await supabase.from('follows').insert({ follower_id: currentUser, following_id: targetUserId })
-      setFollowerCount(c => c + 1)
-    }
-    setIsFollowing(f => !f)
-    setFollowLoading(false)
   }
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ fontSize: '40px' }}>👤</div>
-      <p style={{ color: '#999', fontSize: '14px' }}>프로필 로딩 중...</p>
-    </div>
-  )
+  async function toggleFollow() {
+    if (!currentUserId || currentUserId === userId) return
+    setFollowLoading(true)
+    try {
+      if (isFollowing) {
+        await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', currentUserId)
+          .eq('following_id', userId)
+        setIsFollowing(false)
+        setFollowerCount(c => Math.max(0, c - 1))
+      } else {
+        await supabase
+          .from('follows')
+          .insert({ follower_id: currentUserId, following_id: userId })
+        setIsFollowing(true)
+        setFollowerCount(c => c + 1)
+      }
+    } catch (err) {
+      console.error('팔로우 토글 에러:', err)
+    } finally {
+      setFollowLoading(false)
+    }
+  }
 
-  const nickname = profile?.nickname || '익명'
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>👤</div>
+          <p style={{ color: '#888' }}>프로필 불러오는 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>😕</div>
+          <p style={{ color: '#888' }}>프로필을 찾을 수 없어요</p>
+          <button onClick={() => router.back()} style={{
+            marginTop: '12px', background: '#FF5A3D', color: '#fff',
+            border: 'none', borderRadius: '20px', padding: '10px 20px',
+            fontSize: '14px', cursor: 'pointer',
+          }}>돌아가기</button>
+        </div>
+      </div>
+    )
+  }
+
+  const isSelf = currentUserId === userId
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
-
+    <div style={{ maxWidth: '480px', margin: '0 auto', background: '#fff', minHeight: '100vh', paddingBottom: '80px' }}>
       {/* 헤더 */}
       <div style={{
-        background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
-        display: 'flex', alignItems: 'center', gap: '12px',
-        position: 'sticky', top: 0, zIndex: 100
+        position: 'sticky', top: 0, zIndex: 100,
+        background: '#fff', borderBottom: '1px solid #f0f0f0',
+        padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '12px',
       }}>
         <button onClick={() => router.back()} style={{
-          border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer', padding: 0, color: '#333'
+          background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer',
         }}>←</button>
-        <h1 onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
-          🍜 맛지도
-        </h1>
-        <span style={{ fontSize: '14px', color: '#666' }}>{nickname}님의 프로필</span>
+        <span style={{ fontSize: '18px', fontWeight: 700, flex: 1 }}>
+          {profile.nickname || '사용자'} 의 프로필
+        </span>
       </div>
 
-      <div style={{ padding: '16px' }}>
-
-        {/* 프로필 카드 */}
-        <div style={{
-          background: 'white', borderRadius: '20px', padding: '24px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: '16px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-            <div style={{
-              width: '72px', height: '72px', borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontSize: '28px', fontWeight: '700'
-            }}>{nickname[0]}</div>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: '0 0 6px', fontSize: '20px', fontWeight: '800', color: '#333' }}>{nickname}</p>
-              {profile?.taste_mbti && (
-                <span style={{
-                  background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
-                  borderRadius: '20px', padding: '4px 14px', fontSize: '12px', fontWeight: '700'
-                }}>{profile.taste_mbti}</span>
-              )}
+      {/* 프로필 카드 */}
+      <div style={{ padding: '24px 20px', borderBottom: '8px solid #f8f8f8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+          <div style={{
+            width: '72px', height: '72px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #FF5A3D, #FF8C69)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '32px', flexShrink: 0,
+          }}>🍜</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '6px' }}>
+              {profile.nickname || '닉네임 없음'}
             </div>
-            {!isMe && currentUser && (
-              <button onClick={toggleFollow} disabled={followLoading} style={{
-                padding: '8px 18px', borderRadius: '20px', fontSize: '13px', fontWeight: '700',
-                cursor: followLoading ? 'not-allowed' : 'pointer',
-                border: `2px solid ${isFollowing ? '#ddd' : '#FF5A3D'}`,
-                background: isFollowing ? '#f5f5f5' : '#FF5A3D',
-                color: isFollowing ? '#aaa' : 'white', flexShrink: 0
-              }}>{followLoading ? '...' : isFollowing ? '팔로잉 ✓' : '+ 팔로우'}</button>
-            )}
-            {isMe && (
-              <button onClick={() => router.push('/profile')} style={{
-                padding: '8px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '700',
-                cursor: 'pointer', border: '1.5px solid #FF5A3D', background: 'white', color: '#FF5A3D'
-              }}>편집</button>
+            {profile.taste_mbti && (
+              <span style={{
+                background: '#FFF3F1', color: '#FF5A3D',
+                padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600,
+              }}>{profile.taste_mbti}</span>
             )}
           </div>
-
-          {profile?.bio && (
-            <p style={{
-              margin: '0 0 16px', fontSize: '14px', color: '#666', lineHeight: '1.7',
-              background: '#fafafa', borderRadius: '12px', padding: '12px 14px'
-            }}>{profile.bio}</p>
+          {/* 팔로우 버튼 */}
+          {!isSelf && currentUserId && (
+            <button
+              onClick={toggleFollow}
+              disabled={followLoading}
+              style={{
+                background: isFollowing ? '#f0f0f0' : '#FF5A3D',
+                color: isFollowing ? '#555' : '#fff',
+                border: 'none', borderRadius: '20px',
+                padding: '8px 16px', fontSize: '14px', cursor: 'pointer',
+                opacity: followLoading ? 0.7 : 1,
+              }}
+            >{followLoading ? '...' : isFollowing ? '팔로잉' : '팔로우'}</button>
           )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-around', paddingTop: '16px', borderTop: '1px solid #f5f5f5' }}>
-            {[
-              { label: '리뷰',   val: reviews.length },
-              { label: '팔로워', val: followerCount },
-              { label: '팔로잉', val: followingCount },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#FF5A3D' }}>{s.val}</p>
-                <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#aaa' }}>{s.label}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
-        {/* 리뷰 목록 */}
-        <div style={{
-          background: 'white', borderRadius: '20px', padding: '20px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-        }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: '800', color: '#333' }}>
-            🍴 리뷰 ({reviews.length})
-          </h3>
-          {reviews.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '30px 0' }}>
-              <p style={{ fontSize: '36px', margin: '0 0 8px' }}>🍽️</p>
-              <p style={{ color: '#aaa', margin: 0 }}>아직 리뷰가 없어요</p>
+        {profile.bio && (
+          <p style={{ fontSize: '14px', color: '#555', lineHeight: '1.5', marginBottom: '16px' }}>
+            {profile.bio}
+          </p>
+        )}
+
+        {/* 통계 */}
+        <div style={{ display: 'flex', gap: '20px' }}>
+          {[
+            { label: '리뷰', value: reviews.length },
+            { label: '팔로워', value: followerCount },
+            { label: '팔로잉', value: followingCount },
+          ].map(stat => (
+            <div key={stat.label} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#FF5A3D' }}>{stat.value}</div>
+              <div style={{ fontSize: '12px', color: '#888' }}>{stat.label}</div>
             </div>
-          ) : (
-            reviews.map((r, i) => {
-              const photos     = parsePhotos(r.photos)
-              const isExpanded = expandedId === r.id
-              const total      = Math.round(
-                ((r.taste_score ?? 5) + (r.portion_score ?? 5) + (r.value_score ?? 5) +
-                 (r.spiciness   ?? 5) + (r.saltiness    ?? 5) + (r.sweetness   ?? 5)) / 6 * 10
-              ) / 10
+          ))}
+        </div>
+      </div>
 
-              return (
-                <div key={r.id} onClick={() => setExpandedId(isExpanded ? null : r.id)} style={{
-                  borderBottom: i < reviews.length - 1 ? '1px solid #f5f5f5' : 'none',
-                  paddingBottom: '16px', marginBottom: '16px', cursor: 'pointer'
-                }}>
-                  {photos.length > 0 && (
-                    <div style={{
-                      width: '100%', aspectRatio: '16/9', borderRadius: '14px',
-                      overflow: 'hidden', marginBottom: '10px', background: '#f0f0f0'
-                    }}>
-                      <img src={photos[0]} alt="리뷰 사진"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                    </div>
-                  )}
+      {/* 맛 성향 바 */}
+      <div style={{ padding: '20px', borderBottom: '8px solid #f8f8f8' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>🎯 맛 성향</h3>
+        <TasteBar label="🌶️ 맵기" value={profile.taste_spicy ?? 3} color="#FF5A3D" />
+        <TasteBar label="🧂 짠기" value={profile.taste_salty ?? 3} color="#4A90E2" />
+        <TasteBar label="🍯 단기" value={profile.taste_sweet ?? 3} color="#F5A623" />
+        <TasteBar label="🍋 신기" value={profile.taste_sour ?? 3} color="#7ED321" />
+        <TasteBar label="🥩 풍미" value={profile.taste_rich ?? 3} color="#9B59B6" />
+      </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: '#333' }}>
-                        {r.stores?.name || '가게 이름 없음'}
-                      </p>
-                      <p style={{ margin: '2px 0', fontSize: '12px', color: '#aaa' }}>
-                        {r.stores?.category}{r.menu_name ? ` · ${r.menu_name}` : ''}
-                      </p>
-                    </div>
-                    <div style={{
-                      background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
-                      borderRadius: '12px', padding: '4px 10px', fontSize: '13px', fontWeight: '800',
-                      flexShrink: 0, marginLeft: '10px'
-                    }}>⭐ {total}</div>
+      {/* 리뷰 목록 */}
+      <div style={{ padding: '20px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>
+          📝 리뷰 ({reviews.length})
+        </h3>
+        {reviews.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#aaa' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>📝</div>
+            <p>아직 작성한 리뷰가 없어요</p>
+          </div>
+        ) : (
+          reviews.map(review => {
+            const photos = parsePhotos(review.photos)
+            const isExpanded = expandedReview === review.id
+            return (
+              <div key={review.id} style={{
+                background: '#fff', borderRadius: '12px', marginBottom: '12px',
+                border: '1px solid #f0f0f0', overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              }}>
+                {photos.length > 0 && (
+                  <img
+                    src={photos[0]}
+                    alt="리뷰 사진"
+                    style={{ width: '100%', height: '180px', objectFit: 'cover' }}
+                  />
+                )}
+                <div style={{ padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '15px' }}>
+                      {review.stores?.name ?? '알 수 없는 가게'}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#aaa' }}>
+                      {new Date(review.created_at).toLocaleDateString('ko-KR')}
+                    </span>
                   </div>
-
-                  {r.one_line_review && (
-                    <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#FF5A3D', fontStyle: 'italic' }}>
-                      "{r.one_line_review}"
+                  {review.stores?.category && (
+                    <span style={{
+                      background: '#f5f5f5', color: '#777',
+                      padding: '2px 8px', borderRadius: '10px', fontSize: '11px',
+                    }}>{review.stores.category}</span>
+                  )}
+                  {review.menu_name && (
+                    <p style={{ fontSize: '13px', color: '#888', marginTop: '6px' }}>
+                      🍽️ {review.menu_name}
                     </p>
                   )}
-
-                  {r.content && (
-                    <p style={{
-                      margin: '6px 0 0', fontSize: '13px', color: '#555', lineHeight: '1.6',
-                      display: '-webkit-box',
-                      WebkitLineClamp: isExpanded ? undefined : 2,
-                      WebkitBoxOrient: 'vertical' as const,
-                      overflow: isExpanded ? 'visible' : 'hidden'
-                    }}>{r.content}</p>
-                  )}
-
-                  {((r.texture_tags?.length ?? 0) + (r.situation_tags?.length ?? 0)) > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
-                      {r.texture_tags?.map(t => (
-                        <span key={t} style={{ background: '#fff3f0', color: '#FF5A3D', borderRadius: '20px', padding: '2px 8px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-                      ))}
-                      {r.situation_tags?.map(t => (
-                        <span key={t} style={{ background: '#f0f7ff', color: '#2196F3', borderRadius: '20px', padding: '2px 8px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-                      ))}
-                    </div>
-                  )}
-
-                  {isExpanded && (
-                    <div style={{ marginTop: '12px', background: '#fafafa', borderRadius: '14px', padding: '14px' }}>
-                      <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#aaa', fontWeight: '600' }}>🍴 맛 분석</p>
-                      <TasteBar label="맛"     emoji="🍽️" value={r.taste_score   ?? 5} color="#FF5A3D" />
-                      <TasteBar label="양"     emoji="🍱" value={r.portion_score ?? 5} color="#FF9800" />
-                      <TasteBar label="가성비" emoji="💰" value={r.value_score   ?? 5} color="#4CAF50" />
-                      <TasteBar label="맵기"   emoji="🌶️" value={r.spiciness     ?? 5} color="#F44336" />
-                      <TasteBar label="짠기"   emoji="🧂" value={r.saltiness     ?? 5} color="#2196F3" />
-                      <TasteBar label="단기"   emoji="🍯" value={r.sweetness     ?? 5} color="#9C27B0" />
-                    </div>
-                  )}
-
-                  {r.content && r.content.length > 60 && (
-                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#FF5A3D', fontWeight: '600', textAlign: 'center' }}>
-                      {isExpanded ? '접기 ▲' : '더보기 ▼'}
+                  {review.one_line_review && (
+                    <p style={{ fontSize: '14px', fontWeight: 600, marginTop: '4px' }}>
+                      "{review.one_line_review}"
                     </p>
+                  )}
+                  {review.total_rating != null && (
+                    <div style={{ fontSize: '13px', color: '#FF5A3D', marginTop: '4px' }}>
+                      ⭐ {review.total_rating.toFixed(1)}
+                    </div>
+                  )}
+                  {isExpanded && review.content && (
+                    <p style={{ fontSize: '13px', color: '#555', marginTop: '8px', lineHeight: 1.6 }}>
+                      {review.content}
+                    </p>
+                  )}
+                  {(review.content || (review.tags && review.tags.length > 0)) && (
+                    <button
+                      onClick={() => setExpandedReview(isExpanded ? null : review.id)}
+                      style={{
+                        marginTop: '8px', background: 'none', border: 'none',
+                        color: '#FF5A3D', fontSize: '13px', cursor: 'pointer', padding: 0,
+                      }}
+                    >{isExpanded ? '접기 ▲' : '더보기 ▼'}</button>
                   )}
                 </div>
-              )
-            })
-          )}
-        </div>
+              </div>
+            )
+          })
+        )}
       </div>
 
-      {/* 하단 네비 */}
+      {/* 하단 내비게이션 */}
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex', padding: '8px 0 calc(8px + env(safe-area-inset-bottom))', zIndex: 100
+        position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+        width: '100%', maxWidth: '480px',
+        background: '#fff', borderTop: '1px solid #f0f0f0',
+        display: 'flex', justifyContent: 'space-around',
+        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
+        zIndex: 200,
       }}>
         {[
-          { icon: '🗺️', label: '지도',   path: '/map' },
-          { icon: '🍜', label: 'MOTD',   path: '/feed' },
-          { icon: '✍️', label: '리뷰',   path: '/review/write' },
-          { icon: '🔖', label: '저장',   path: '/saved' },
+          { icon: '🗺️', label: '지도', path: '/map' },
+          { icon: '🍜', label: 'MOTD', path: '/feed' },
+          { icon: '✍️', label: '리뷰', path: '/review/write' },
+          { icon: '🔖', label: '저장', path: '/saved' },
           { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
           <button key={item.path} onClick={() => router.push(item.path)} style={{
-            flex: 1, border: 'none', background: 'transparent',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-            cursor: 'pointer', padding: '4px 0'
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            background: 'none', border: 'none', cursor: 'pointer', color: '#888',
           }}>
-            <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', color: '#999' }}>{item.label}</span>
+            <span style={{ fontSize: '22px' }}>{item.icon}</span>
+            <span style={{ fontSize: '10px', marginTop: '2px' }}>{item.label}</span>
           </button>
         ))}
       </nav>

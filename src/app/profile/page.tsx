@@ -1,365 +1,450 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-/* ── 랜덤 닉네임 생성기 ── */
-const NICKNAME_PREFIXES = ['매운맛', '달콤한', '짭짤한', '고소한', '새콤한', '담백한', '촉촉한', '바삭한', '진한', '부드러운']
-const NICKNAME_SUFFIXES = ['탐험가', '미식가', '헌터', '마스터', '여행자', '수집가', '전문가', '감정사', '도전자', '발굴자']
-const generateRandomNickname = () => {
-  const p = NICKNAME_PREFIXES[Math.floor(Math.random() * NICKNAME_PREFIXES.length)]
-  const s = NICKNAME_SUFFIXES[Math.floor(Math.random() * NICKNAME_SUFFIXES.length)]
-  return `${p} ${s}`
-}
-
-/* ── 맛 MBTI 목록 ── */
-const TASTE_MBTIS = [
-  { value: '매운맛 탐험가 🌶️',  desc: '자극적이고 강렬한 맛을 좋아해요' },
-  { value: '달콤한 미식가 🍯',   desc: '달콤하고 부드러운 맛을 선호해요' },
-  { value: '담백함 추구자 🥢',   desc: '깔끔하고 자극 없는 맛을 좋아해요' },
-  { value: '짭짤함 헌터 🧂',    desc: '짭조름한 감칠맛을 즐겨요' },
-  { value: '고소함 마스터 🌰',   desc: '고소하고 깊은 맛을 추구해요' },
-  { value: '새콤달콤 여행자 🍋', desc: '새콤하면서 달콤한 밸런스를 좋아해요' },
-  { value: '양 중시 파워 🍱',    desc: '맛도 중요하지만 양이 최고예요' },
-  { value: '가성비 분석가 💰',   desc: '가격 대비 만족도를 꼼꼼히 따져요' },
-]
-
-interface UserProfile {
-  user_id: string
-  nickname: string
-  bio: string | null
-  taste_mbti: string | null
+// ─── 타입 정의 ─────────────────────────────────────────────────────────────
+interface StoreInfo {
+  id: string
+  name: string
+  category: string | null
+  address: string | null
 }
 
 interface Review {
   id: string
-  menu_name: string | null
-  content: string | null
-  one_line_review: string | null
-  star_score: number | null
   created_at: string
-  stores: { name: string; category: string } | null
+  menu_name: string | null
+  one_line_review: string | null
+  content: string | null
+  total_rating: number | null
+  photos: string | string[] | null
+  tags: string[] | null
+  store_id: string
+  stores: StoreInfo | null
 }
 
+interface UserProfile {
+  id: string
+  user_id: string
+  nickname: string | null
+  bio: string | null
+  taste_mbti: string | null
+  taste_spicy: number | null
+  taste_salty: number | null
+  taste_sweet: number | null
+  taste_sour: number | null
+  taste_rich: number | null
+}
+
+// ─── 헬퍼 함수 ──────────────────────────────────────────────────────────────
+function parsePhotos(photos: string | string[] | null): string[] {
+  if (!photos) return []
+  if (Array.isArray(photos)) return photos
+  try {
+    const parsed = JSON.parse(photos)
+    return Array.isArray(parsed) ? parsed : [photos]
+  } catch {
+    return [photos]
+  }
+}
+
+const TASTE_MBTI_LIST = [
+  '🌶️ 매운맛 탐험가', '🧂 짭조름한 미식가', '🍯 달달한 디저트러버',
+  '🥩 고기 마니아', '🐟 해산물 전문가', '🌿 채식 지향가',
+  '☕ 카페 순례자', '🍜 면요리 전도사', '🍱 한식 지킴이', '🌍 세계음식 탐험가',
+]
+
+function generateNickname(): string {
+  const adjectives = ['맛있는', '배고픈', '즐거운', '행복한', '신나는', '귀여운', '멋진', '용감한']
+  const nouns = ['미식가', '탐험가', '요리사', '먹방러', '맛집러', '구루메', '푸디', '셰프']
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)]
+  const noun = nouns[Math.floor(Math.random() * nouns.length)]
+  const num = Math.floor(Math.random() * 9000) + 1000
+  return `${adj}${noun}${num}`
+}
+
+// ─── TasteBar 컴포넌트 ───────────────────────────────────────────────────────
+function TasteBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <span style={{ fontSize: '13px', color: '#555' }}>{label}</span>
+        <span style={{ fontSize: '13px', fontWeight: 600, color }}>{value}/5</span>
+      </div>
+      <div style={{ background: '#f0f0f0', borderRadius: '4px', height: '8px' }}>
+        <div style={{
+          width: `${(value / 5) * 100}%`,
+          height: '100%',
+          background: color,
+          borderRadius: '4px',
+          transition: 'width 0.5s ease',
+        }} />
+      </div>
+    </div>
+  )
+}
+
+// ─── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 export default function ProfilePage() {
-  const router   = useRouter()
+  const router = useRouter()
   const supabase = createClient()
 
-  const [profile,        setProfile]        = useState<UserProfile | null>(null)
-  const [reviews,        setReviews]        = useState<Review[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [editing,        setEditing]        = useState(false)
-  const [nickname,       setNickname]       = useState('')
-  const [bio,            setBio]            = useState('')
-  const [tasteMbti,      setTasteMbti]      = useState('')
-  const [saving,         setSaving]         = useState(false)
-  const [followerCount,  setFollowerCount]  = useState(0)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
-  const [showMbtiPicker, setShowMbtiPicker] = useState(false)
+  const [expandedReview, setExpandedReview] = useState<string | null>(null)
+
+  // 편집 상태
+  const [editNickname, setEditNickname] = useState('')
+  const [editBio, setEditBio] = useState('')
+  const [editMBTI, setEditMBTI] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const load = async () => {
+    loadProfile()
+  }, [])
+
+  async function loadProfile() {
+    setLoading(true)
+    try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
 
-      const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }] = await Promise.all([
+      const [profileRes, reviewsRes, followerRes, followingRes] = await Promise.all([
         supabase.from('user_taste_profile').select('*').eq('user_id', user.id).single(),
         supabase.from('reviews')
-          .select('id, menu_name, content, one_line_review, star_score, created_at, stores(name, category)')
+          .select(`
+            id, created_at, menu_name, one_line_review, content,
+            total_rating, photos, tags, store_id,
+            stores(id, name, category, address)
+          `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(20),
-        supabase.from('follows').select('id').eq('following_id', user.id),
-        supabase.from('follows').select('id').eq('follower_id', user.id),
+          .limit(30),
+        supabase.from('follows').select('id', { count: 'exact' }).eq('following_id', user.id),
+        supabase.from('follows').select('id', { count: 'exact' }).eq('follower_id', user.id),
       ])
 
-      if (p) {
-        setProfile(p as UserProfile)
-        setNickname(p.nickname || '')
-        setBio(p.bio || '')
-        setTasteMbti(p.taste_mbti || '')
+      if (profileRes.data) {
+        setProfile(profileRes.data)
+        setEditNickname(profileRes.data.nickname || '')
+        setEditBio(profileRes.data.bio || '')
+        setEditMBTI(profileRes.data.taste_mbti || '')
       } else {
-        const autoNick = generateRandomNickname()
-        await supabase.from('user_taste_profile').insert({ user_id: user.id, nickname: autoNick })
-        setNickname(autoNick)
-        setProfile({ user_id: user.id, nickname: autoNick, bio: null, taste_mbti: null })
+        // 프로필이 없으면 기본값으로 생성
+        const newNickname = generateNickname()
+        const { data: newProfile } = await supabase
+          .from('user_taste_profile')
+          .upsert({ user_id: user.id, nickname: newNickname })
+          .select()
+          .single()
+        if (newProfile) {
+          setProfile(newProfile)
+          setEditNickname(newProfile.nickname || '')
+        }
       }
 
-      /* stores 배열→객체 변환 */
-      const parsedReviews: Review[] = (rv || []).map((r: any) => ({
-        id:              r.id,
-        menu_name:       r.menu_name,
-        content:         r.content,
-        one_line_review: r.one_line_review,
-        star_score:      r.star_score,
-        created_at:      r.created_at,
-        stores: Array.isArray(r.stores)
-          ? (r.stores[0] ?? null)
-          : (r.stores ?? null),
-      }))
+      // stores 배열 → 단일 객체 변환
+      if (reviewsRes.data) {
+        const mapped: Review[] = reviewsRes.data.map((r: any) => ({
+          ...r,
+          stores: Array.isArray(r.stores) ? (r.stores[0] ?? null) : (r.stores ?? null),
+        }))
+        setReviews(mapped)
+      }
 
-      setReviews(parsedReviews)
-      setFollowerCount(fwer?.length  || 0)
-      setFollowingCount(fwing?.length || 0)
+      setFollowerCount(followerRes.count ?? 0)
+      setFollowingCount(followingRes.count ?? 0)
+    } catch (err) {
+      console.error('프로필 로드 에러:', err)
+    } finally {
       setLoading(false)
     }
-    load()
-  }, [])
+  }
 
-  const handleSave = async () => {
+  async function handleSave() {
+    if (!profile) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase.from('user_taste_profile').upsert({
-      user_id:    user.id,
-      nickname:   nickname.trim(),
-      bio:        bio.trim()       || null,
-      taste_mbti: tasteMbti.trim() || null,
-    })
-    setProfile(p => p ? {
-      ...p,
-      nickname:   nickname.trim(),
-      bio:        bio.trim() || null,
-      taste_mbti: tasteMbti.trim() || null,
-    } : p)
-    setEditing(false)
-    setSaving(false)
+    try {
+      const { error } = await supabase
+        .from('user_taste_profile')
+        .update({
+          nickname: editNickname.trim() || profile.nickname,
+          bio: editBio.trim(),
+          taste_mbti: editMBTI,
+        })
+        .eq('user_id', profile.user_id)
+
+      if (error) throw error
+
+      setProfile(prev => prev ? {
+        ...prev,
+        nickname: editNickname.trim() || prev.nickname,
+        bio: editBio.trim(),
+        taste_mbti: editMBTI,
+      } : prev)
+      setEditing(false)
+    } catch (err) {
+      console.error('저장 에러:', err)
+      alert('저장 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>👤</div>
+          <p style={{ color: '#888' }}>프로필 불러오는 중...</p>
+        </div>
+      </div>
+    )
   }
-
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ fontSize: '40px' }}>👤</div>
-      <p style={{ color: '#999', fontSize: '14px' }}>프로필 로딩 중...</p>
-    </div>
-  )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
-
+    <div style={{ maxWidth: '480px', margin: '0 auto', background: '#fff', minHeight: '100vh', paddingBottom: '80px' }}>
       {/* 헤더 */}
       <div style={{
-        background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        position: 'sticky', top: 0, zIndex: 100,
+        background: '#fff', borderBottom: '1px solid #f0f0f0',
+        padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
-        <h1 onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
-          🍜 맛지도
-        </h1>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleLogout} style={{
-            border: '1px solid #ddd', background: 'white', color: '#aaa',
-            borderRadius: '20px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer'
-          }}>로그아웃</button>
-          <button onClick={() => { setEditing(!editing); setShowMbtiPicker(false) }} style={{
-            border: '1px solid #FF5A3D',
-            background: editing ? '#FF5A3D' : 'white',
-            color: editing ? 'white' : '#FF5A3D',
-            borderRadius: '20px', padding: '6px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-          }}>{editing ? '취소' : '편집'}</button>
+        <span style={{ fontSize: '20px', fontWeight: 700 }}>👤 내 프로필</span>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} style={{
+            background: '#FF5A3D', color: '#fff', border: 'none',
+            borderRadius: '20px', padding: '8px 16px', fontSize: '14px', cursor: 'pointer',
+          }}>편집</button>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setEditing(false)} style={{
+              background: '#f0f0f0', color: '#555', border: 'none',
+              borderRadius: '20px', padding: '8px 16px', fontSize: '14px', cursor: 'pointer',
+            }}>취소</button>
+            <button onClick={handleSave} disabled={saving} style={{
+              background: '#FF5A3D', color: '#fff', border: 'none',
+              borderRadius: '20px', padding: '8px 16px', fontSize: '14px', cursor: 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}>{saving ? '저장중...' : '저장'}</button>
+          </div>
+        )}
+      </div>
+
+      {/* 프로필 카드 */}
+      <div style={{ padding: '24px 20px', borderBottom: '8px solid #f8f8f8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+          <div style={{
+            width: '72px', height: '72px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #FF5A3D, #FF8C69)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '32px', flexShrink: 0,
+          }}>🍜</div>
+          <div style={{ flex: 1 }}>
+            {editing ? (
+              <input
+                value={editNickname}
+                onChange={e => setEditNickname(e.target.value)}
+                style={{
+                  width: '100%', fontSize: '18px', fontWeight: 700,
+                  border: '1px solid #ddd', borderRadius: '8px', padding: '6px 10px',
+                  marginBottom: '4px', boxSizing: 'border-box',
+                }}
+                placeholder="닉네임"
+              />
+            ) : (
+              <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '4px' }}>
+                {profile?.nickname || '닉네임 없음'}
+              </div>
+            )}
+            {profile?.taste_mbti && !editing && (
+              <span style={{
+                background: '#FFF3F1', color: '#FF5A3D',
+                padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 600,
+              }}>{profile.taste_mbti}</span>
+            )}
+          </div>
+        </div>
+
+        {/* MBTI 편집 */}
+        {editing && (
+          <div style={{ marginBottom: '12px' }}>
+            <p style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>맛 MBTI 선택</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {TASTE_MBTI_LIST.map(m => (
+                <button key={m} onClick={() => setEditMBTI(m)} style={{
+                  padding: '5px 10px', borderRadius: '16px', fontSize: '12px',
+                  border: editMBTI === m ? '2px solid #FF5A3D' : '1px solid #ddd',
+                  background: editMBTI === m ? '#FFF3F1' : '#fff',
+                  color: editMBTI === m ? '#FF5A3D' : '#555',
+                  cursor: 'pointer',
+                }}>{m}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 바이오 */}
+        {editing ? (
+          <textarea
+            value={editBio}
+            onChange={e => setEditBio(e.target.value)}
+            style={{
+              width: '100%', border: '1px solid #ddd', borderRadius: '8px',
+              padding: '8px 10px', fontSize: '14px', resize: 'none',
+              height: '80px', boxSizing: 'border-box', marginBottom: '12px',
+            }}
+            placeholder="자기소개를 입력하세요"
+          />
+        ) : (
+          profile?.bio && (
+            <p style={{ fontSize: '14px', color: '#555', lineHeight: '1.5', marginBottom: '12px' }}>
+              {profile.bio}
+            </p>
+          )
+        )}
+
+        {/* 통계 */}
+        <div style={{ display: 'flex', gap: '20px' }}>
+          {[
+            { label: '리뷰', value: reviews.length },
+            { label: '팔로워', value: followerCount },
+            { label: '팔로잉', value: followingCount },
+          ].map(stat => (
+            <div key={stat.label} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#FF5A3D' }}>{stat.value}</div>
+              <div style={{ fontSize: '12px', color: '#888' }}>{stat.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div style={{ padding: '16px' }}>
-
-        {/* 프로필 카드 */}
-        <div style={{
-          background: 'white', borderRadius: '20px', padding: '24px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: '16px'
-        }}>
-          <div style={{
-            width: '80px', height: '80px', borderRadius: '50%',
-            background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontSize: '32px', fontWeight: '700', margin: '0 auto 20px'
-          }}>
-            {(profile?.nickname || '?')[0]}
-          </div>
-
-          {editing ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* 닉네임 + 랜덤 */}
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input value={nickname} onChange={e => setNickname(e.target.value)}
-                  placeholder="닉네임"
-                  style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1px solid #eee', fontSize: '14px', outline: 'none' }} />
-                <button onClick={() => setNickname(generateRandomNickname())} style={{
-                  padding: '10px 14px', borderRadius: '12px', border: '1px solid #FF5A3D',
-                  background: 'white', color: '#FF5A3D', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
-                }}>🎲 랜덤</button>
-              </div>
-
-              {/* 맛 MBTI 선택 */}
-              <div>
-                <button onClick={() => setShowMbtiPicker(!showMbtiPicker)} style={{
-                  width: '100%', padding: '10px 14px', borderRadius: '12px',
-                  border: '1px solid #eee', background: 'white', fontSize: '14px',
-                  textAlign: 'left', cursor: 'pointer', color: tasteMbti ? '#333' : '#aaa',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <span>{tasteMbti || '맛 MBTI 선택하기'}</span>
-                  <span>{showMbtiPicker ? '▲' : '▼'}</span>
-                </button>
-                {showMbtiPicker && (
-                  <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #eee', marginTop: '6px', overflow: 'hidden' }}>
-                    {TASTE_MBTIS.map(m => (
-                      <div key={m.value} onClick={() => { setTasteMbti(m.value); setShowMbtiPicker(false) }} style={{
-                        padding: '12px 14px', borderBottom: '1px solid #f5f5f5', cursor: 'pointer',
-                        background: tasteMbti === m.value ? '#fff3f0' : 'white'
-                      }}>
-                        <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#333' }}>{m.value}</p>
-                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#aaa' }}>{m.desc}</p>
-                      </div>
-                    ))}
-                    <div onClick={() => { setTasteMbti(''); setShowMbtiPicker(false) }}
-                      style={{ padding: '12px 14px', cursor: 'pointer', color: '#aaa', fontSize: '13px' }}>
-                      직접 입력하기
-                    </div>
-                  </div>
-                )}
-                {!showMbtiPicker && !TASTE_MBTIS.find(m => m.value === tasteMbti) && (
-                  <input value={tasteMbti} onChange={e => setTasteMbti(e.target.value)}
-                    placeholder="맛 MBTI 직접 입력"
-                    style={{
-                      marginTop: '8px', width: '100%', padding: '10px 14px',
-                      borderRadius: '12px', border: '1px solid #eee', fontSize: '14px',
-                      outline: 'none', boxSizing: 'border-box'
-                    }} />
-                )}
-              </div>
-
-              {/* 자기소개 */}
-              <textarea value={bio} onChange={e => setBio(e.target.value)}
-                placeholder="자기소개 (어떤 음식을 좋아하나요?)"
-                rows={3}
-                style={{ padding: '10px 14px', borderRadius: '12px', border: '1px solid #eee', fontSize: '14px', outline: 'none', resize: 'vertical', lineHeight: '1.6' }} />
-
-              <button onClick={handleSave} disabled={saving} style={{
-                padding: '14px', borderRadius: '14px', border: 'none',
-                background: saving ? '#ccc' : 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-                color: 'white', fontSize: '15px', fontWeight: '700', cursor: saving ? 'not-allowed' : 'pointer'
-              }}>{saving ? '저장 중...' : '저장하기'}</button>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: '800', color: '#333' }}>
-                {profile?.nickname || '닉네임 없음'}
-              </p>
-              {profile?.taste_mbti && (
-                <span style={{
-                  background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
-                  borderRadius: '20px', padding: '5px 16px', fontSize: '13px', fontWeight: '700'
-                }}>{profile.taste_mbti}</span>
-              )}
-              {profile?.bio && (
-                <p style={{ margin: '14px 0 0', fontSize: '14px', color: '#666', lineHeight: '1.7' }}>
-                  {profile.bio}
-                </p>
-              )}
-              <div style={{
-                display: 'flex', justifyContent: 'center', gap: '32px',
-                marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #f5f5f5'
-              }}>
-                {[
-                  { label: '리뷰',   val: reviews.length },
-                  { label: '팔로워', val: followerCount },
-                  { label: '팔로잉', val: followingCount },
-                ].map(s => (
-                  <div key={s.label} style={{ textAlign: 'center' }}>
-                    <p style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#FF5A3D' }}>{s.val}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#aaa' }}>{s.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {/* 맛 성향 바 */}
+      {profile && (
+        <div style={{ padding: '20px', borderBottom: '8px solid #f8f8f8' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>🎯 나의 맛 성향</h3>
+          <TasteBar label="🌶️ 맵기" value={profile.taste_spicy ?? 3} color="#FF5A3D" />
+          <TasteBar label="🧂 짠기" value={profile.taste_salty ?? 3} color="#4A90E2" />
+          <TasteBar label="🍯 단기" value={profile.taste_sweet ?? 3} color="#F5A623" />
+          <TasteBar label="🍋 신기" value={profile.taste_sour ?? 3} color="#7ED321" />
+          <TasteBar label="🥩 풍미" value={profile.taste_rich ?? 3} color="#9B59B6" />
         </div>
+      )}
 
-        {/* 내 리뷰 */}
-        <div style={{
-          background: 'white', borderRadius: '20px', padding: '20px',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
-        }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: '800', color: '#333' }}>
-            🍴 내 리뷰 ({reviews.length})
-          </h3>
-          {reviews.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '30px 0' }}>
-              <p style={{ fontSize: '40px', margin: '0 0 8px' }}>🍽️</p>
-              <p style={{ color: '#aaa', margin: 0 }}>아직 리뷰가 없어요</p>
-              <button onClick={() => router.push('/review/write')} style={{
-                marginTop: '12px', padding: '10px 20px', borderRadius: '20px',
-                border: 'none', background: '#FF5A3D', color: 'white',
-                fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-              }}>첫 리뷰 작성하기</button>
-            </div>
-          ) : (
-            reviews.map((r, i) => (
-              <div key={r.id} style={{
-                borderBottom: i < reviews.length - 1 ? '1px solid #f5f5f5' : 'none',
-                paddingBottom: '14px', marginBottom: '14px'
+      {/* 리뷰 목록 */}
+      <div style={{ padding: '20px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>
+          📝 내 리뷰 ({reviews.length})
+        </h3>
+        {reviews.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#aaa' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>📝</div>
+            <p>아직 작성한 리뷰가 없어요</p>
+            <button
+              onClick={() => router.push('/review/write')}
+              style={{
+                marginTop: '12px', background: '#FF5A3D', color: '#fff',
+                border: 'none', borderRadius: '20px', padding: '10px 20px',
+                fontSize: '14px', cursor: 'pointer',
+              }}
+            >첫 리뷰 작성하기</button>
+          </div>
+        ) : (
+          reviews.map(review => {
+            const photos = parsePhotos(review.photos)
+            const isExpanded = expandedReview === review.id
+            return (
+              <div key={review.id} style={{
+                background: '#fff', borderRadius: '12px', marginBottom: '12px',
+                border: '1px solid #f0f0f0', overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: '#333' }}>
-                      {r.stores?.name || '가게 이름 없음'}
-                    </p>
-                    <p style={{ margin: '2px 0', fontSize: '12px', color: '#aaa' }}>
-                      {r.stores?.category} · {r.menu_name || '메뉴 미입력'}
-                    </p>
-                    {r.one_line_review && (
-                      <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#FF5A3D', fontStyle: 'italic' }}>
-                        "{r.one_line_review}"
-                      </p>
-                    )}
-                    {r.content && (
-                      <p style={{
-                        margin: '4px 0 0', fontSize: '13px', color: '#666', lineHeight: '1.5',
-                        display: '-webkit-box', WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical' as const, overflow: 'hidden'
-                      }}>{r.content}</p>
-                    )}
+                {photos.length > 0 && (
+                  <img
+                    src={photos[0]}
+                    alt="리뷰 사진"
+                    style={{ width: '100%', height: '180px', objectFit: 'cover' }}
+                  />
+                )}
+                <div style={{ padding: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '15px' }}>
+                      {review.stores?.name ?? '알 수 없는 가게'}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#aaa' }}>
+                      {new Date(review.created_at).toLocaleDateString('ko-KR')}
+                    </span>
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '10px' }}>
-                    {r.star_score && (
-                      <div style={{ fontSize: '12px' }}>{'⭐'.repeat(r.star_score)}</div>
-                    )}
-                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#ccc' }}>
-                      {new Date(r.created_at).toLocaleDateString('ko-KR')}
+                  {review.stores?.category && (
+                    <span style={{
+                      background: '#f5f5f5', color: '#777',
+                      padding: '2px 8px', borderRadius: '10px', fontSize: '11px',
+                    }}>{review.stores.category}</span>
+                  )}
+                  {review.menu_name && (
+                    <p style={{ fontSize: '13px', color: '#888', marginTop: '6px' }}>
+                      🍽️ {review.menu_name}
                     </p>
-                  </div>
+                  )}
+                  {review.one_line_review && (
+                    <p style={{ fontSize: '14px', fontWeight: 600, marginTop: '4px' }}>
+                      "{review.one_line_review}"
+                    </p>
+                  )}
+                  {review.total_rating != null && (
+                    <div style={{ fontSize: '13px', color: '#FF5A3D', marginTop: '4px' }}>
+                      ⭐ {review.total_rating.toFixed(1)}
+                    </div>
+                  )}
+                  {isExpanded && review.content && (
+                    <p style={{ fontSize: '13px', color: '#555', marginTop: '8px', lineHeight: 1.6 }}>
+                      {review.content}
+                    </p>
+                  )}
+                  {(review.content || (review.tags && review.tags.length > 0)) && (
+                    <button
+                      onClick={() => setExpandedReview(isExpanded ? null : review.id)}
+                      style={{
+                        marginTop: '8px', background: 'none', border: 'none',
+                        color: '#FF5A3D', fontSize: '13px', cursor: 'pointer', padding: 0,
+                      }}
+                    >{isExpanded ? '접기 ▲' : '더보기 ▼'}</button>
+                  )}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            )
+          })
+        )}
       </div>
 
-      {/* 하단 네비 */}
+      {/* 하단 내비게이션 */}
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex', padding: '8px 0 calc(8px + env(safe-area-inset-bottom))', zIndex: 100
+        position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+        width: '100%', maxWidth: '480px',
+        background: '#fff', borderTop: '1px solid #f0f0f0',
+        display: 'flex', justifyContent: 'space-around',
+        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
+        zIndex: 200,
       }}>
         {[
-          { icon: '🗺️', label: '지도',   path: '/map' },
-          { icon: '🍜', label: 'MOTD',   path: '/feed' },
-          { icon: '✍️', label: '리뷰',   path: '/review/write' },
-          { icon: '🔖', label: '저장',   path: '/saved' },
+          { icon: '🗺️', label: '지도', path: '/map' },
+          { icon: '🍜', label: 'MOTD', path: '/feed' },
+          { icon: '✍️', label: '리뷰', path: '/review/write' },
+          { icon: '🔖', label: '저장', path: '/saved' },
           { icon: '👤', label: '프로필', path: '/profile' },
         ].map(item => (
           <button key={item.path} onClick={() => router.push(item.path)} style={{
-            flex: 1, border: 'none', background: 'transparent',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-            cursor: 'pointer', padding: '4px 0'
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: item.path === '/profile' ? '#FF5A3D' : '#888',
           }}>
-            <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', color: item.path === '/profile' ? '#FF5A3D' : '#999' }}>{item.label}</span>
+            <span style={{ fontSize: '22px' }}>{item.icon}</span>
+            <span style={{ fontSize: '10px', marginTop: '2px' }}>{item.label}</span>
           </button>
         ))}
       </nav>
