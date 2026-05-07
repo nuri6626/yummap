@@ -161,6 +161,36 @@ export default function FeedPage() {
               <p style={{ fontSize: '14px', color: '#444', lineHeight: '1.6', margin: '0 0 12px' }}>
                 {review.content}
               </p>
+import RadarChart from '@/components/RadarChart'
+
+// 리뷰 카드 안에 추가 (별점 아래쪽)
+{review.taste_score && (
+  <div style={{
+    background: '#fafafa',
+    borderRadius: '12px',
+    padding: '16px',
+    marginTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center'
+  }}>
+    <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#999', fontWeight: '600' }}>
+      🕸️ 맛 레이더
+    </p>
+    <RadarChart
+      scores={{
+        taste: review.taste_score || 5,
+        portion: review.portion_score || 5,
+        value: review.value_score || 5,
+        spiciness: review.spiciness || 5,
+        saltiness: review.saltiness || 5,
+        sweetness: review.sweetness || 5
+      }}
+      size={160}
+      showLabels={true}
+    />
+  </div>
+)}
 
               {/* 좋아요 버튼 */}
               <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid #F2F2F2', paddingTop: '12px' }}>
