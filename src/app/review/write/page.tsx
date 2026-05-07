@@ -7,11 +7,56 @@ import { createClient } from '@/lib/supabase/client'
 const TEXTURE_TAGS = ['바삭', '촉촉', '쫄깃', '부드러움', '아삭', '진함', '담백', '느끼함', '고소함', '신선함']
 const SITUATION_TAGS = ['해장', '데이트', '혼밥', '회식', '가족', '친구', '기념일', '야식', '점심', '브런치']
 
+// ── H: 동그라미 척도 컴포넌트 ──────────────────────────────
+function CircleScale({
+  label, emoji, value, onChange, color = '#FF5A3D'
+}: {
+  label: string; emoji: string; value: number
+  onChange: (v: number) => void; color?: string
+}) {
+  return (
+    <div style={{ marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span style={{ fontSize: '14px', fontWeight: '700', color: '#1A1A1A' }}>{emoji} {label}</span>
+        <span style={{ fontSize: '13px', fontWeight: '800', color }}>{value}/10</span>
+      </div>
+      <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
+        {[1,2,3,4,5,6,7,8,9,10].map(n => (
+          <button
+            key={n}
+            onClick={() => onChange(n)}
+            style={{
+              width: '26px', height: '26px', borderRadius: '50%',
+              border: n <= value ? 'none' : `2px solid ${color}40`,
+              background: n <= value
+                ? n <= 3 ? '#4CAF50' : n <= 6 ? '#FF9800' : '#FF5A3D'
+                : '#f5f5f5',
+              color: n <= value ? 'white' : '#bbb',
+              fontSize: '10px', fontWeight: '700', cursor: 'pointer',
+              transition: 'all 0.15s', flexShrink: 0,
+              transform: n === value ? 'scale(1.2)' : 'scale(1)',
+              boxShadow: n === value ? `0 2px 8px ${color}60` : 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >{n}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+        <span style={{ fontSize: '9px', color: '#4CAF50', fontWeight: '600' }}>약함</span>
+        <span style={{ fontSize: '9px', color: '#FF9800', fontWeight: '600' }}>보통</span>
+        <span style={{ fontSize: '9px', color: '#FF5A3D', fontWeight: '600' }}>강함</span>
+      </div>
+    </div>
+  )
+}
+
+// ── 메인 컴포넌트 ───────────────────────────────────────────
 function ReviewWriteInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
 
+  // 가게 정보 (URL 파라미터)
   const [storeId,       setStoreId]       = useState(searchParams.get('store_id') || '')
   const [storeName,     setStoreName]     = useState(decodeURIComponent(searchParams.get('store_name') || ''))
   const [storeAddress,  setStoreAddress]  = useState(decodeURIComponent(searchParams.get('store_address') || ''))
@@ -20,6 +65,7 @@ function ReviewWriteInner() {
   const [storeLng,      setStoreLng]      = useState(searchParams.get('store_lng') || '')
   const [storePhone,    setStorePhone]    = useState(decodeURIComponent(searchParams.get('store_phone') || ''))
 
+  // 폼 상태
   const [loading,       setLoading]       = useState(false)
   const [menuName,      setMenuName]      = useState('')
   const [content,       setContent]       = useState('')
@@ -27,6 +73,7 @@ function ReviewWriteInner() {
   const [starScore,     setStarScore]     = useState(0)
   const [photos,        setPhotos]        = useState<string[]>([])
 
+  // H: 동그라미 척도 (슬라이더 대체)
   const [tasteScore,    setTasteScore]    = useState(5)
   const [portionScore,  setPortionScore]  = useState(5)
   const [valueScore,    setValueScore]    = useState(5)
@@ -34,12 +81,15 @@ function ReviewWriteInner() {
   const [saltiness,     setSaltiness]     = useState(5)
   const [sweetness,     setSweetness]     = useState(5)
 
+  // 태그
   const [textureTags,   setTextureTags]   = useState<string[]>([])
   const [situationTags, setSituationTags] = useState<string[]>([])
+
+  // 비교 메뉴
   const [compareMenu1,  setCompareMenu1]  = useState('')
   const [compareMenu2,  setCompareMenu2]  = useState('')
 
-  // URL 파라미터 변경 시 상태 업데이트 (지도에서 가게 선택 후 돌아올 때)
+  // I: URL 파라미터 변경 감지 (지도에서 가게 선택 후 돌아올 때)
   useEffect(() => {
     const id   = searchParams.get('store_id')
     const name = searchParams.get('store_name')
@@ -58,19 +108,20 @@ function ReviewWriteInner() {
     if (ph)   setStorePhone(decodeURIComponent(ph))
   }, [searchParams])
 
+  // 태그 토글
   const toggleTextureTag = (tag: string) => {
     setTextureTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag)
       : prev.length < 3 ? [...prev, tag] : prev
     )
   }
-
   const toggleSituationTag = (tag: string) => {
     setSituationTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     )
   }
 
+  // 사진 업로드
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || photos.length >= 3) return
@@ -88,6 +139,7 @@ function ReviewWriteInner() {
     }
   }
 
+  // 리뷰 등록
   const handleSubmit = async () => {
     if (!storeName) {
       alert('가게를 선택해주세요. 위의 버튼을 눌러 지도에서 가게를 선택해주세요')
@@ -113,13 +165,13 @@ function ReviewWriteInner() {
         } else {
           const { data: newStore, error: insertError } = await supabase
             .from('stores').insert({
-              kakao_id: storeId,
-              name: storeName,
-              category: storeCategory,
-              address: storeAddress,
-              latitude: storeLat ? parseFloat(storeLat) : null,
-              longitude: storeLng ? parseFloat(storeLng) : null,
-              phone: storePhone,
+              kakao_id:   storeId,
+              name:       storeName,
+              category:   storeCategory,
+              address:    storeAddress,
+              latitude:   storeLat ? parseFloat(storeLat) : null,
+              longitude:  storeLng ? parseFloat(storeLng) : null,
+              phone:      storePhone,
               review_count: 0,
             }).select('id').single()
           if (insertError || !newStore) {
@@ -190,27 +242,7 @@ function ReviewWriteInner() {
     }
   }
 
-  const SliderRow = ({
-    label, value, onChange, left, right, emoji
-  }: {
-    label: string; value: number; onChange: (v: number) => void
-    left: string; right: string; emoji: string
-  }) => (
-    <div style={{ marginBottom: '16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '700', color: '#1A1A1A' }}>{emoji} {label}</span>
-        <span style={{ fontSize: '13px', fontWeight: '800', color: '#FF5A3D' }}>{value}</span>
-      </div>
-      <input type="range" min={1} max={10} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        style={{ width: '100%', accentColor: '#FF5A3D' }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-        <span style={{ fontSize: '10px', color: '#bbb' }}>{left}</span>
-        <span style={{ fontSize: '10px', color: '#bbb' }}>{right}</span>
-      </div>
-    </div>
-  )
-
+  // 섹션 카드 래퍼
   const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <div style={{
       background: 'white', borderRadius: '16px', padding: '16px',
@@ -224,7 +256,7 @@ function ReviewWriteInner() {
   return (
     <div style={{ minHeight: '100vh', background: '#F8F8F8', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
 
-      {/* 헤더 */}
+      {/* ── 헤더 ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '12px',
         padding: '14px 16px', background: 'white',
@@ -239,7 +271,7 @@ function ReviewWriteInner() {
 
       <div style={{ padding: '14px 16px', maxWidth: '520px', margin: '0 auto' }}>
 
-        {/* 가게 정보 / 가게 선택 버튼 */}
+        {/* ── I: 가게 선택 / 변경 ── */}
         {storeName ? (
           <div style={{
             background: 'linear-gradient(135deg,#FF5A3D,#FF8560)',
@@ -280,12 +312,10 @@ function ReviewWriteInner() {
               gap: '8px', marginBottom: '12px',
               boxShadow: '0 4px 16px rgba(255,90,61,0.3)'
             }}
-          >
-            🗺️ 지도에서 가게 선택하기
-          </button>
+          >🗺️ 지도에서 가게 선택하기</button>
         )}
 
-        {/* 드신 메뉴 */}
+        {/* ── 드신 메뉴 ── */}
         <SectionCard title="🍽️ 드신 메뉴">
           <input type="text" placeholder="예: 짬뽕, 탕수육, 된장찌개..."
             value={menuName} onChange={e => setMenuName(e.target.value)}
@@ -296,7 +326,7 @@ function ReviewWriteInner() {
             }} />
         </SectionCard>
 
-        {/* 사진 업로드 */}
+        {/* ── 사진 업로드 ── */}
         <SectionCard title="📸 음식 사진 (선택, 최대 3장)">
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {photos.map((url, i) => (
@@ -327,12 +357,12 @@ function ReviewWriteInner() {
           </div>
         </SectionCard>
 
-        {/* 별점 + 재방문 */}
+        {/* ── 별점 + 재방문 ── */}
         <SectionCard title="⭐ 별점 & 재방문 의사">
           <div style={{ marginBottom: '14px' }}>
             <p style={{ fontSize: '12px', color: '#999', margin: '0 0 8px' }}>별점 (선택)</p>
             <div style={{ display: 'flex', gap: '6px' }}>
-              {[1, 2, 3, 4, 5].map(n => (
+              {[1,2,3,4,5].map(n => (
                 <button key={n} onClick={() => setStarScore(starScore === n ? 0 : n)}
                   style={{
                     fontSize: '28px', background: 'none', border: 'none',
@@ -358,29 +388,27 @@ function ReviewWriteInner() {
                   style={{
                     flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
                     cursor: 'pointer', fontSize: '14px', fontWeight: '700',
-                    background: wantToGoBack === item.value ? item.color : '#F2F2F2',
-                    color:      wantToGoBack === item.value ? 'white'    : '#666',
+                    background: wantToGoBack === item.value ? item.color   : '#F2F2F2',
+                    color:      wantToGoBack === item.value ? 'white'      : '#666',
                     transition: 'all 0.15s',
                     boxShadow:  wantToGoBack === item.value ? `0 3px 10px ${item.color}44` : 'none',
-                  }}>
-                  {item.label}
-                </button>
+                  }}>{item.label}</button>
               ))}
             </div>
           </div>
         </SectionCard>
 
-        {/* 맛 프로필 슬라이더 */}
-        <SectionCard title="🎚️ 맛 프로필 (10초 컷)">
-          <SliderRow label="맛"    value={tasteScore}   onChange={setTasteScore}   left="별로"   right="최고"      emoji="😋" />
-          <SliderRow label="양"    value={portionScore} onChange={setPortionScore} left="적음"   right="많음"      emoji="🍚" />
-          <SliderRow label="가성비" value={valueScore}   onChange={setValueScore}   left="별로"   right="최고"      emoji="💰" />
-          <SliderRow label="맵기"  value={spiciness}    onChange={setSpiciness}    left="안매움" right="매우 매움" emoji="🌶️" />
-          <SliderRow label="짠기"  value={saltiness}    onChange={setSaltiness}    left="싱거움" right="매우 짬"   emoji="🧂" />
-          <SliderRow label="단기"  value={sweetness}    onChange={setSweetness}    left="안달콤" right="매우 달콤" emoji="🍯" />
+        {/* ── H: 동그라미 척도 (맛 프로필 6개) ── */}
+        <SectionCard title="🎯 맛 프로필 (필수)">
+          <CircleScale label="맛"    emoji="🍽️" value={tasteScore}   onChange={setTasteScore}   color="#FF5A3D" />
+          <CircleScale label="양"    emoji="🍱" value={portionScore} onChange={setPortionScore} color="#FF9800" />
+          <CircleScale label="가성비" emoji="💰" value={valueScore}   onChange={setValueScore}   color="#4CAF50" />
+          <CircleScale label="맵기"  emoji="🌶️" value={spiciness}    onChange={setSpiciness}    color="#F44336" />
+          <CircleScale label="짠기"  emoji="🧂" value={saltiness}    onChange={setSaltiness}    color="#2196F3" />
+          <CircleScale label="단기"  emoji="🍯" value={sweetness}    onChange={setSweetness}    color="#9C27B0" />
         </SectionCard>
 
-        {/* 식감 태그 */}
+        {/* ── 식감 태그 ── */}
         <SectionCard title="🧩 식감 태그 (최대 3개)">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {TEXTURE_TAGS.map(tag => {
@@ -406,7 +434,7 @@ function ReviewWriteInner() {
           )}
         </SectionCard>
 
-        {/* 상황 태그 */}
+        {/* ── 상황 태그 ── */}
         <SectionCard title="🎭 상황 태그">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {SITUATION_TAGS.map(tag => {
@@ -425,7 +453,7 @@ function ReviewWriteInner() {
           </div>
         </SectionCard>
 
-        {/* 비교 좌표 */}
+        {/* ── 비교 메뉴 ── */}
         <SectionCard title="🔬 비교 좌표 (미식가용, 선택)">
           <p style={{ fontSize: '12px', color: '#999', margin: '0 0 10px', lineHeight: '1.5' }}>
             이 가게와 비교되는 메뉴나 가게를 적어보세요
@@ -446,7 +474,7 @@ function ReviewWriteInner() {
             }} />
         </SectionCard>
 
-        {/* 자유 리뷰 */}
+        {/* ── 자유 리뷰 ── */}
         <SectionCard title="✍️ 자유 리뷰 (선택)">
           <textarea
             placeholder={`자유롭게 작성해주세요!\n\n예시:\n- 분위기는 어땠나요?\n- 특별히 맛있었던 점은?\n- 아쉬웠던 점은?\n- 추천 메뉴가 있나요?`}
@@ -463,7 +491,7 @@ function ReviewWriteInner() {
           </p>
         </SectionCard>
 
-        {/* 등록 버튼 */}
+        {/* ── 등록 버튼 ── */}
         <button onClick={handleSubmit} disabled={loading}
           style={{
             width: '100%',
