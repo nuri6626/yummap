@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -12,42 +12,56 @@ function ReviewWriteInner() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
-  const storeId = searchParams.get('store_id') || ''
-  const storeName = decodeURIComponent(searchParams.get('store_name') || '')
-  const storeAddress = decodeURIComponent(searchParams.get('store_address') || '')
-  const storeCategory = decodeURIComponent(searchParams.get('store_category') || '')
-  const storeLat = searchParams.get('store_lat') || ''
-  const storeLng = searchParams.get('store_lng') || ''
-  const storePhone = decodeURIComponent(searchParams.get('store_phone') || '')
+  const [storeId,       setStoreId]       = useState(searchParams.get('store_id') || '')
+  const [storeName,     setStoreName]     = useState(decodeURIComponent(searchParams.get('store_name') || ''))
+  const [storeAddress,  setStoreAddress]  = useState(decodeURIComponent(searchParams.get('store_address') || ''))
+  const [storeCategory, setStoreCategory] = useState(decodeURIComponent(searchParams.get('store_category') || ''))
+  const [storeLat,      setStoreLat]      = useState(searchParams.get('store_lat') || '')
+  const [storeLng,      setStoreLng]      = useState(searchParams.get('store_lng') || '')
+  const [storePhone,    setStorePhone]    = useState(decodeURIComponent(searchParams.get('store_phone') || ''))
 
-  const [loading, setLoading] = useState(false)
-  const [menuName, setMenuName] = useState('')
-  const [content, setContent] = useState('')
-  const [wantToGoBack, setWantToGoBack] = useState<boolean | null>(null)
-  const [starScore, setStarScore] = useState(0)
-  const [photos, setPhotos] = useState<string[]>([])
+  const [loading,       setLoading]       = useState(false)
+  const [menuName,      setMenuName]      = useState('')
+  const [content,       setContent]       = useState('')
+  const [wantToGoBack,  setWantToGoBack]  = useState<boolean | null>(null)
+  const [starScore,     setStarScore]     = useState(0)
+  const [photos,        setPhotos]        = useState<string[]>([])
 
-  // 맛 프로필 슬라이더 6개
-  const [tasteScore, setTasteScore] = useState(5)
-  const [portionScore, setPortionScore] = useState(5)
-  const [valueScore, setValueScore] = useState(5)
-  const [spiciness, setSpiciness] = useState(5)
-  const [saltiness, setSaltiness] = useState(5)
-  const [sweetness, setSweetness] = useState(5)
+  const [tasteScore,    setTasteScore]    = useState(5)
+  const [portionScore,  setPortionScore]  = useState(5)
+  const [valueScore,    setValueScore]    = useState(5)
+  const [spiciness,     setSpiciness]     = useState(5)
+  const [saltiness,     setSaltiness]     = useState(5)
+  const [sweetness,     setSweetness]     = useState(5)
 
-  // 태그
-  const [textureTags, setTextureTags] = useState<string[]>([])
+  const [textureTags,   setTextureTags]   = useState<string[]>([])
   const [situationTags, setSituationTags] = useState<string[]>([])
+  const [compareMenu1,  setCompareMenu1]  = useState('')
+  const [compareMenu2,  setCompareMenu2]  = useState('')
 
-  // 비교 좌표 (미식가용)
-  const [compareMenu1, setCompareMenu1] = useState('')
-  const [compareMenu2, setCompareMenu2] = useState('')
+  // URL 파라미터 변경 시 상태 업데이트 (지도에서 가게 선택 후 돌아올 때)
+  useEffect(() => {
+    const id   = searchParams.get('store_id')
+    const name = searchParams.get('store_name')
+    const addr = searchParams.get('store_address')
+    const cat  = searchParams.get('store_category')
+    const lat  = searchParams.get('store_lat')
+    const lng  = searchParams.get('store_lng')
+    const ph   = searchParams.get('store_phone')
+
+    if (id)   setStoreId(id)
+    if (name) setStoreName(decodeURIComponent(name))
+    if (addr) setStoreAddress(decodeURIComponent(addr))
+    if (cat)  setStoreCategory(decodeURIComponent(cat))
+    if (lat)  setStoreLat(lat)
+    if (lng)  setStoreLng(lng)
+    if (ph)   setStorePhone(decodeURIComponent(ph))
+  }, [searchParams])
 
   const toggleTextureTag = (tag: string) => {
     setTextureTags(prev =>
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : prev.length < 3 ? [...prev, tag] : prev
+      prev.includes(tag) ? prev.filter(t => t !== tag)
+      : prev.length < 3 ? [...prev, tag] : prev
     )
   }
 
@@ -60,33 +74,30 @@ function ReviewWriteInner() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || photos.length >= 3) return
-
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     for (const file of Array.from(files)) {
       if (photos.length >= 3) break
       const ext = file.name.split('.').pop()
       const fileName = `${user.id}/${Date.now()}.${ext}`
-      const { data, error } = await supabase.storage
-        .from('review-photos')
-        .upload(fileName, file)
+      const { data, error } = await supabase.storage.from('review-photos').upload(fileName, file)
       if (!error && data) {
-        const { data: urlData } = supabase.storage
-          .from('review-photos')
-          .getPublicUrl(data.path)
+        const { data: urlData } = supabase.storage.from('review-photos').getPublicUrl(data.path)
         setPhotos(prev => [...prev, urlData.publicUrl])
       }
     }
   }
 
   const handleSubmit = async () => {
-    if (!storeId) { alert('가게 정보가 없습니다. 지도에서 가게를 선택해주세요'); return }
-    if (starScore === 0 && wantToGoBack === null) {
-      alert('별점 또는 "다시 갈래요" 여부를 선택해주세요'); return
+    if (!storeName) {
+      alert('가게를 선택해주세요. 위의 버튼을 눌러 지도에서 가게를 선택해주세요')
+      return
+    }
+    if (wantToGoBack === null) {
+      alert('"다시 갈래요" 여부를 선택해주세요')
+      return
     }
     setLoading(true)
-
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
@@ -102,15 +113,19 @@ function ReviewWriteInner() {
         } else {
           const { data: newStore, error: insertError } = await supabase
             .from('stores').insert({
-              kakao_id: storeId, name: storeName, category: storeCategory,
+              kakao_id: storeId,
+              name: storeName,
+              category: storeCategory,
               address: storeAddress,
               latitude: storeLat ? parseFloat(storeLat) : null,
               longitude: storeLng ? parseFloat(storeLng) : null,
-              phone: storePhone, review_count: 0,
+              phone: storePhone,
+              review_count: 0,
             }).select('id').single()
           if (insertError || !newStore) {
             alert('가게 등록 오류: ' + insertError?.message)
-            setLoading(false); return
+            setLoading(false)
+            return
           }
           realStoreId = newStore.id
         }
@@ -121,30 +136,30 @@ function ReviewWriteInner() {
       const isFirstReview = !existingReviews || existingReviews.length === 0
 
       const { error: reviewError } = await supabase.from('reviews').insert({
-        user_id: user.id,
-        store_id: realStoreId,
-        taste_score: tasteScore,
-        portion_score: portionScore,
-        value_score: valueScore,
+        user_id:          user.id,
+        store_id:         realStoreId,
+        taste_score:      tasteScore,
+        portion_score:    portionScore,
+        value_score:      valueScore,
         spiciness_actual: spiciness,
         saltiness_actual: saltiness,
-        content: content.trim() || null,
-        photos: photos,
-        visit_verified: false,
-        quality_score: (tasteScore + portionScore + valueScore) / 3,
-        // 추가 필드
-        sweetness_score: sweetness,
-        texture_tags: textureTags,
-        situation_tags: situationTags,
-        menu_name: menuName.trim() || null,
-        want_to_go_back: wantToGoBack,
-        star_score: starScore || null,
-        compare_menus: [compareMenu1, compareMenu2].filter(Boolean),
+        content:          content.trim() || null,
+        photos:           photos,
+        visit_verified:   false,
+        quality_score:    (tasteScore + portionScore + valueScore) / 3,
+        sweetness_score:  sweetness,
+        texture_tags:     textureTags,
+        situation_tags:   situationTags,
+        menu_name:        menuName.trim() || null,
+        want_to_go_back:  wantToGoBack,
+        star_score:       starScore || null,
+        compare_menus:    [compareMenu1, compareMenu2].filter(Boolean),
       })
 
       if (reviewError) {
         alert('리뷰 저장 오류: ' + reviewError.message)
-        setLoading(false); return
+        setLoading(false)
+        return
       }
 
       await supabase.rpc('increment_review_count', { store_id_input: realStoreId })
@@ -159,7 +174,8 @@ function ReviewWriteInner() {
         }
         if (!currentBadges.find((b: any) => b.id === 'first_review' && b.store === storeName)) {
           await supabase.from('user_taste_profile')
-            .update({ badges: [...currentBadges, newBadge] }).eq('user_id', user.id)
+            .update({ badges: [...currentBadges, newBadge] })
+            .eq('user_id', user.id)
           alert(`🥇 "${storeName}" 최초 리뷰 등록자 배지 획득!`)
         }
       }
@@ -167,21 +183,22 @@ function ReviewWriteInner() {
       alert('리뷰가 등록되었습니다! 🎉')
       router.push('/map')
     } catch (err) {
-      console.error(err); alert('오류가 발생했습니다')
+      console.error(err)
+      alert('오류가 발생했습니다')
     } finally {
       setLoading(false)
     }
   }
 
-  const SliderRow = ({ label, value, onChange, left, right, emoji }: {
+  const SliderRow = ({
+    label, value, onChange, left, right, emoji
+  }: {
     label: string; value: number; onChange: (v: number) => void
     left: string; right: string; emoji: string
   }) => (
     <div style={{ marginBottom: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-        <span style={{ fontSize: '13px', fontWeight: '700', color: '#1A1A1A' }}>
-          {emoji} {label}
-        </span>
+        <span style={{ fontSize: '13px', fontWeight: '700', color: '#1A1A1A' }}>{emoji} {label}</span>
         <span style={{ fontSize: '13px', fontWeight: '800', color: '#FF5A3D' }}>{value}</span>
       </div>
       <input type="range" min={1} max={10} value={value}
@@ -199,9 +216,7 @@ function ReviewWriteInner() {
       background: 'white', borderRadius: '16px', padding: '16px',
       marginBottom: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
     }}>
-      <p style={{ fontSize: '14px', fontWeight: '800', color: '#1A1A1A', margin: '0 0 14px' }}>
-        {title}
-      </p>
+      <p style={{ fontSize: '14px', fontWeight: '800', color: '#1A1A1A', margin: '0 0 14px' }}>{title}</p>
       {children}
     </div>
   )
@@ -224,24 +239,51 @@ function ReviewWriteInner() {
 
       <div style={{ padding: '14px 16px', maxWidth: '520px', margin: '0 auto' }}>
 
-        {/* 가게 정보 */}
-        <div style={{
-          background: 'linear-gradient(135deg,#FF5A3D,#FF8560)',
-          borderRadius: '16px', padding: '16px', marginBottom: '12px', color: 'white'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '28px' }}>🏪</span>
-            <div>
-              <p style={{ fontSize: '11px', opacity: 0.8, margin: '0 0 2px' }}>리뷰 작성 중인 가게</p>
-              <p style={{ fontSize: '17px', fontWeight: '900', margin: 0 }}>
-                {storeName || '지도에서 가게를 선택해주세요'}
-              </p>
-              {storeAddress && (
-                <p style={{ fontSize: '11px', opacity: 0.75, margin: '2px 0 0' }}>📍 {storeAddress}</p>
-              )}
+        {/* 가게 정보 / 가게 선택 버튼 */}
+        {storeName ? (
+          <div style={{
+            background: 'linear-gradient(135deg,#FF5A3D,#FF8560)',
+            borderRadius: '16px', padding: '16px', marginBottom: '12px', color: 'white'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                <span style={{ fontSize: '28px' }}>🏪</span>
+                <div>
+                  <p style={{ fontSize: '11px', opacity: 0.8, margin: '0 0 2px' }}>리뷰 작성 중인 가게</p>
+                  <p style={{ fontSize: '17px', fontWeight: '900', margin: 0 }}>{storeName}</p>
+                  {storeAddress && (
+                    <p style={{ fontSize: '11px', opacity: 0.75, margin: '2px 0 0' }}>📍 {storeAddress}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => router.push('/map?selectMode=true&returnTo=review')}
+                style={{
+                  background: 'rgba(255,255,255,0.25)',
+                  border: '1px solid rgba(255,255,255,0.5)',
+                  color: 'white', borderRadius: '12px',
+                  padding: '6px 12px', fontSize: '12px',
+                  fontWeight: '700', cursor: 'pointer', flexShrink: 0
+                }}
+              >변경</button>
             </div>
           </div>
-        </div>
+        ) : (
+          <button
+            onClick={() => router.push('/map?selectMode=true&returnTo=review')}
+            style={{
+              width: '100%', padding: '18px',
+              background: 'linear-gradient(135deg,#FF5A3D,#FF8560)',
+              color: 'white', border: 'none', borderRadius: '16px',
+              fontSize: '15px', fontWeight: '800', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '8px', marginBottom: '12px',
+              boxShadow: '0 4px 16px rgba(255,90,61,0.3)'
+            }}
+          >
+            🗺️ 지도에서 가게 선택하기
+          </button>
+        )}
 
         {/* 드신 메뉴 */}
         <SectionCard title="🍽️ 드신 메뉴">
@@ -254,7 +296,7 @@ function ReviewWriteInner() {
             }} />
         </SectionCard>
 
-        {/* 📸 사진 업로드 (선택) */}
+        {/* 사진 업로드 */}
         <SectionCard title="📸 음식 사진 (선택, 최대 3장)">
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {photos.map((url, i) => (
@@ -285,9 +327,8 @@ function ReviewWriteInner() {
           </div>
         </SectionCard>
 
-        {/* ⭐ 별점 + 다시 갈래요 */}
+        {/* 별점 + 재방문 */}
         <SectionCard title="⭐ 별점 & 재방문 의사">
-          {/* 별점 */}
           <div style={{ marginBottom: '14px' }}>
             <p style={{ fontSize: '12px', color: '#999', margin: '0 0 8px' }}>별점 (선택)</p>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -306,24 +347,21 @@ function ReviewWriteInner() {
               )}
             </div>
           </div>
-
-          {/* 다시 갈래요 */}
           <div>
             <p style={{ fontSize: '12px', color: '#999', margin: '0 0 8px' }}>다시 갈래요? (필수)</p>
             <div style={{ display: 'flex', gap: '8px' }}>
               {[
-                { value: true, label: '🙋 또 갈래요!', color: '#34C759' },
-                { value: false, label: '🙅 글쎄요...', color: '#FF3B30' },
+                { value: true,  label: '🙋 또 갈래요!', color: '#34C759' },
+                { value: false, label: '🙅 글쎄요...',  color: '#FF3B30' },
               ].map(item => (
-                <button key={String(item.value)}
-                  onClick={() => setWantToGoBack(item.value)}
+                <button key={String(item.value)} onClick={() => setWantToGoBack(item.value)}
                   style={{
                     flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
                     cursor: 'pointer', fontSize: '14px', fontWeight: '700',
                     background: wantToGoBack === item.value ? item.color : '#F2F2F2',
-                    color: wantToGoBack === item.value ? 'white' : '#666',
+                    color:      wantToGoBack === item.value ? 'white'    : '#666',
                     transition: 'all 0.15s',
-                    boxShadow: wantToGoBack === item.value ? `0 3px 10px ${item.color}44` : 'none',
+                    boxShadow:  wantToGoBack === item.value ? `0 3px 10px ${item.color}44` : 'none',
                   }}>
                   {item.label}
                 </button>
@@ -332,35 +370,32 @@ function ReviewWriteInner() {
           </div>
         </SectionCard>
 
-        {/* 🎚️ 맛 프로필 슬라이더 6개 */}
+        {/* 맛 프로필 슬라이더 */}
         <SectionCard title="🎚️ 맛 프로필 (10초 컷)">
-          <SliderRow label="맛" value={tasteScore} onChange={setTasteScore} left="별로" right="최고" emoji="😋" />
-          <SliderRow label="양" value={portionScore} onChange={setPortionScore} left="적음" right="많음" emoji="🍚" />
-          <SliderRow label="가성비" value={valueScore} onChange={setValueScore} left="별로" right="최고" emoji="💰" />
-          <SliderRow label="맵기" value={spiciness} onChange={setSpiciness} left="안매움" right="매우 매움" emoji="🌶️" />
-          <SliderRow label="짠기" value={saltiness} onChange={setSaltiness} left="싱거움" right="매우 짬" emoji="🧂" />
-          <SliderRow label="단기" value={sweetness} onChange={setSweetness} left="안달콤" right="매우 달콤" emoji="🍯" />
+          <SliderRow label="맛"    value={tasteScore}   onChange={setTasteScore}   left="별로"   right="최고"      emoji="😋" />
+          <SliderRow label="양"    value={portionScore} onChange={setPortionScore} left="적음"   right="많음"      emoji="🍚" />
+          <SliderRow label="가성비" value={valueScore}   onChange={setValueScore}   left="별로"   right="최고"      emoji="💰" />
+          <SliderRow label="맵기"  value={spiciness}    onChange={setSpiciness}    left="안매움" right="매우 매움" emoji="🌶️" />
+          <SliderRow label="짠기"  value={saltiness}    onChange={setSaltiness}    left="싱거움" right="매우 짬"   emoji="🧂" />
+          <SliderRow label="단기"  value={sweetness}    onChange={setSweetness}    left="안달콤" right="매우 달콤" emoji="🍯" />
         </SectionCard>
 
-        {/* 🧩 식감 태그 (3개까지) */}
+        {/* 식감 태그 */}
         <SectionCard title="🧩 식감 태그 (최대 3개)">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {TEXTURE_TAGS.map(tag => {
               const selected = textureTags.includes(tag)
               const disabled = !selected && textureTags.length >= 3
               return (
-                <button key={tag} onClick={() => toggleTextureTag(tag)}
-                  disabled={disabled}
+                <button key={tag} onClick={() => toggleTextureTag(tag)} disabled={disabled}
                   style={{
                     padding: '7px 14px', borderRadius: '20px', border: 'none',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     fontSize: '13px', fontWeight: '600',
                     background: selected ? '#FF5A3D' : disabled ? '#F8F8F8' : '#F2F2F2',
-                    color: selected ? 'white' : disabled ? '#ccc' : '#555',
+                    color:      selected ? 'white'   : disabled ? '#ccc'    : '#555',
                     transition: 'all 0.15s',
-                  }}>
-                  {tag}
-                </button>
+                  }}>{tag}</button>
               )
             })}
           </div>
@@ -371,7 +406,7 @@ function ReviewWriteInner() {
           )}
         </SectionCard>
 
-        {/* 🎭 상황 태그 */}
+        {/* 상황 태그 */}
         <SectionCard title="🎭 상황 태그">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {SITUATION_TAGS.map(tag => {
@@ -382,17 +417,15 @@ function ReviewWriteInner() {
                     padding: '7px 14px', borderRadius: '20px', border: 'none',
                     cursor: 'pointer', fontSize: '13px', fontWeight: '600',
                     background: selected ? '#4A90E2' : '#F2F2F2',
-                    color: selected ? 'white' : '#555',
+                    color:      selected ? 'white'   : '#555',
                     transition: 'all 0.15s',
-                  }}>
-                  {tag}
-                </button>
+                  }}>{tag}</button>
               )
             })}
           </div>
         </SectionCard>
 
-        {/* 🔬 비교 좌표 (미식가용, 선택) */}
+        {/* 비교 좌표 */}
         <SectionCard title="🔬 비교 좌표 (미식가용, 선택)">
           <p style={{ fontSize: '12px', color: '#999', margin: '0 0 10px', lineHeight: '1.5' }}>
             이 가게와 비교되는 메뉴나 가게를 적어보세요
@@ -413,7 +446,7 @@ function ReviewWriteInner() {
             }} />
         </SectionCard>
 
-        {/* ✍️ 자유 리뷰 (선택) */}
+        {/* 자유 리뷰 */}
         <SectionCard title="✍️ 자유 리뷰 (선택)">
           <textarea
             placeholder={`자유롭게 작성해주세요!\n\n예시:\n- 분위기는 어땠나요?\n- 특별히 맛있었던 점은?\n- 아쉬웠던 점은?\n- 추천 메뉴가 있나요?`}
@@ -443,6 +476,7 @@ function ReviewWriteInner() {
           }}>
           {loading ? '등록 중...' : '리뷰 등록하기 🎉'}
         </button>
+
       </div>
     </div>
   )
