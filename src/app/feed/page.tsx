@@ -43,7 +43,7 @@ interface Comment {
 }
 
 /* =========================================================
-   사진 파싱 유틸
+   사진 파싱
    ========================================================= */
 function parsePhotos(raw: unknown): string[] {
   if (!raw) return []
@@ -67,7 +67,7 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
     { label: '단기',   emoji: '🍯', value: review.sweetness     ?? 5 },
   ]
   const colors = ['#FF5A3D', '#FF9800', '#4CAF50', '#F44336', '#2196F3', '#9C27B0']
-  const total = Math.round(items.reduce((s, i) => s + i.value, 0) / items.length * 10) / 10
+  const total  = Math.round(items.reduce((s, i) => s + i.value, 0) / items.length * 10) / 10
 
   return (
     <div onClick={onClose} style={{
@@ -83,7 +83,6 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
         <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#aaa' }}>
           {review.stores?.name} · {review.menu_name || '메뉴 미입력'}
         </p>
-
         {items.map((item, i) => (
           <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <span style={{ width: '20px', textAlign: 'center', fontSize: '16px' }}>{item.emoji}</span>
@@ -94,7 +93,6 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
             <span style={{ width: '28px', textAlign: 'right', fontWeight: '700', color: colors[i], fontSize: '14px' }}>{item.value}</span>
           </div>
         ))}
-
         <div style={{
           marginTop: '16px', padding: '14px 16px', borderRadius: '14px',
           background: 'linear-gradient(135deg,#FF5A3D18,#FF8C4218)',
@@ -103,14 +101,12 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
           <span style={{ fontWeight: '700', color: '#333', fontSize: '15px' }}>종합 점수</span>
           <span style={{ fontWeight: '900', color: '#FF5A3D', fontSize: '24px' }}>{total}</span>
         </div>
-
         {review.content && (
           <p style={{
             margin: '14px 0 0', fontSize: '14px', color: '#555', lineHeight: '1.6',
             background: '#fafafa', borderRadius: '12px', padding: '12px 14px'
           }}>{review.content}</p>
         )}
-
         {((review.texture_tags?.length ?? 0) + (review.situation_tags?.length ?? 0)) > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
             {review.texture_tags?.map(t => (
@@ -121,7 +117,6 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
             ))}
           </div>
         )}
-
         <button onClick={onClose} style={{
           marginTop: '20px', width: '100%', padding: '14px', borderRadius: '14px',
           border: 'none', background: '#FF5A3D', color: 'white', fontSize: '15px', fontWeight: '700', cursor: 'pointer'
@@ -135,7 +130,7 @@ function TasteModal({ review, onClose }: { review: Review; onClose: () => void }
    미니 프로필 팝업
    ========================================================= */
 function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void }) {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
   const [profile, setProfile] = useState<{
     nickname: string; bio?: string; taste_mbti?: string
@@ -147,17 +142,21 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
     const load = async () => {
       const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }] = await Promise.all([
         supabase.from('user_taste_profile').select('*').eq('user_id', userId).single(),
-        supabase.from('reviews').select('id,menu_name,star_score,stores(name)').eq('user_id', userId).order('created_at', { ascending: false }).limit(5),
+        supabase.from('reviews')
+          .select('id,menu_name,star_score,stores(name)')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(5),
         supabase.from('follows').select('id').eq('following_id', userId),
         supabase.from('follows').select('id').eq('follower_id', userId),
       ])
       setProfile({
-        nickname: p?.nickname || '익명',
-        bio: p?.bio,
-        taste_mbti: p?.taste_mbti,
-        review_count: rv?.length || 0,
-        follower_count: fwer?.length || 0,
-        following_count: fwing?.length || 0,
+        nickname:        p?.nickname      || '익명',
+        bio:             p?.bio,
+        taste_mbti:      p?.taste_mbti,
+        review_count:    rv?.length       || 0,
+        follower_count:  fwer?.length     || 0,
+        following_count: fwing?.length    || 0,
         reviews: (rv || []) as { id: string; menu_name: string | null; stores: { name: string } | null; star_score: number | null }[],
       })
     }
@@ -194,12 +193,12 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
                 )}
               </div>
             </div>
-
-            {profile.bio && <p style={{ fontSize: '13px', color: '#666', lineHeight: '1.5', marginBottom: '14px' }}>{profile.bio}</p>}
-
+            {profile.bio && (
+              <p style={{ fontSize: '13px', color: '#666', lineHeight: '1.5', marginBottom: '14px' }}>{profile.bio}</p>
+            )}
             <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
               {[
-                { label: '리뷰', val: profile.review_count },
+                { label: '리뷰',   val: profile.review_count },
                 { label: '팔로워', val: profile.follower_count },
                 { label: '팔로잉', val: profile.following_count },
               ].map(s => (
@@ -209,7 +208,6 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
                 </div>
               ))}
             </div>
-
             <p style={{ fontWeight: '700', fontSize: '13px', color: '#333', margin: '0 0 8px' }}>최근 리뷰</p>
             {profile.reviews.map(r => (
               <div key={r.id} style={{
@@ -220,7 +218,6 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
                 <span>{r.star_score ? '⭐'.repeat(r.star_score) : '-'}</span>
               </div>
             ))}
-
             <button onClick={() => { onClose(); router.push(`/profile/${userId}`) }} style={{
               marginTop: '16px', width: '100%', padding: '12px', borderRadius: '14px',
               border: '1px solid #FF5A3D', background: 'white', color: '#FF5A3D',
@@ -234,13 +231,13 @@ function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void
 }
 
 /* =========================================================
-   팔로우 버튼 (모든 리뷰에 일관적으로 표시)
+   팔로우 버튼
    ========================================================= */
 function FollowButton({ targetId, currentUserId }: { targetId: string; currentUserId: string | null }) {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
   const [following, setFollowing] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading,   setLoading]   = useState(true)
   const isMe = currentUserId === targetId
 
   useEffect(() => {
@@ -253,29 +250,29 @@ function FollowButton({ targetId, currentUserId }: { targetId: string; currentUs
       .then(({ data }) => { setFollowing(!!data); setLoading(false) })
   }, [currentUserId, targetId, isMe])
 
-  /* 자기 자신 리뷰 → "나" 배지 */
-  if (isMe) {
-    return (
-      <span style={{
-        padding: '4px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: '700',
-        background: '#f5f5f5', color: '#aaa'
-      }}>나</span>
-    )
-  }
+  if (isMe) return (
+    <span style={{
+      padding: '4px 10px', borderRadius: '20px', fontSize: '10px',
+      fontWeight: '700', background: '#f5f5f5', color: '#aaa'
+    }}>나</span>
+  )
 
-  /* 비로그인 → 로그인 유도 버튼 */
-  if (!currentUserId) {
-    return (
-      <button onClick={e => { e.stopPropagation(); router.push('/login') }} style={{
-        padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
-        border: '1.5px solid #ddd', background: 'white', color: '#aaa', cursor: 'pointer'
-      }}>팔로우</button>
-    )
-  }
+  if (!currentUserId) return (
+    <button onClick={e => { e.stopPropagation(); router.push('/login') }} style={{
+      padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
+      border: '1.5px solid #ddd', background: 'white', color: '#aaa', cursor: 'pointer'
+    }}>팔로우</button>
+  )
+
+  if (loading) return (
+    <span style={{
+      padding: '4px 12px', borderRadius: '20px', fontSize: '11px',
+      background: '#f0f0f0', color: 'transparent', minWidth: '60px', display: 'inline-block'
+    }}>ㅤ</span>
+  )
 
   const toggle = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (loading) return
     setLoading(true)
     if (following) {
       await supabase.from('follows').delete().eq('follower_id', currentUserId).eq('following_id', targetId)
@@ -284,16 +281,6 @@ function FollowButton({ targetId, currentUserId }: { targetId: string; currentUs
     }
     setFollowing(f => !f)
     setLoading(false)
-  }
-
-  /* 로딩 중 스켈레톤 */
-  if (loading) {
-    return (
-      <span style={{
-        padding: '4px 12px', borderRadius: '20px', fontSize: '11px',
-        background: '#f0f0f0', color: 'transparent', minWidth: '60px', display: 'inline-block'
-      }}>ㅤ</span>
-    )
   }
 
   return (
@@ -307,28 +294,52 @@ function FollowButton({ targetId, currentUserId }: { targetId: string; currentUs
 }
 
 /* =========================================================
-   댓글 섹션
+   댓글 섹션 - FK 없이 별도 조회로 수정
    ========================================================= */
 function CommentsSection({ reviewId, currentUserId }: { reviewId: string; currentUserId: string | null }) {
   const supabase = createClient()
-  const [comments, setComments] = useState<Comment[]>([])
-  const [text, setText] = useState('')
-  const [open, setOpen] = useState(false)
-  const [commentCount, setCommentCount] = useState(0)
+  const [comments,      setComments]      = useState<Comment[]>([])
+  const [text,          setText]          = useState('')
+  const [open,          setOpen]          = useState(false)
+  const [commentCount,  setCommentCount]  = useState(0)
 
   const load = useCallback(async () => {
-    const { data, count } = await supabase
+    /* ① comments 조회 */
+    const { data: commentData, count } = await supabase
       .from('comments')
-      .select('*, user_taste_profile(nickname)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('review_id', reviewId)
       .order('created_at', { ascending: true })
       .limit(20)
-    setComments((data || []) as Comment[])
+
+    if (!commentData || commentData.length === 0) {
+      setComments([])
+      setCommentCount(count ?? 0)
+      return
+    }
+
+    /* ② user_id 목록으로 nickname 별도 조회 */
+    const userIds = [...new Set(commentData.map((c: any) => c.user_id))]
+    const { data: profiles } = await supabase
+      .from('user_taste_profile')
+      .select('user_id, nickname')
+      .in('user_id', userIds)
+
+    const profileMap = Object.fromEntries(
+      (profiles || []).map((p: any) => [p.user_id, p.nickname])
+    )
+
+    /* ③ 합치기 */
+    const merged: Comment[] = commentData.map((c: any) => ({
+      ...c,
+      user_taste_profile: { nickname: profileMap[c.user_id] || '익명' }
+    }))
+
+    setComments(merged)
     setCommentCount(count ?? 0)
   }, [reviewId])
 
   useEffect(() => {
-    /* 댓글 수만 먼저 로드 */
     supabase
       .from('comments')
       .select('id', { count: 'exact' })
@@ -338,7 +349,11 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
 
   const submit = async () => {
     if (!text.trim() || !currentUserId) return
-    await supabase.from('comments').insert({ review_id: reviewId, user_id: currentUserId, content: text.trim() })
+    await supabase.from('comments').insert({
+      review_id: reviewId,
+      user_id:   currentUserId,
+      content:   text.trim()
+    })
     setText('')
     load()
   }
@@ -355,7 +370,9 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
       {open && (
         <div style={{ marginTop: '10px' }} onClick={e => e.stopPropagation()}>
           {comments.length === 0 && (
-            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', padding: '8px 0' }}>첫 댓글을 남겨보세요!</p>
+            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', padding: '8px 0' }}>
+              첫 댓글을 남겨보세요!
+            </p>
           )}
           {comments.map(c => (
             <div key={c.id} style={{ marginBottom: '8px', fontSize: '13px' }}>
@@ -368,7 +385,6 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
               </span>
             </div>
           ))}
-
           {currentUserId ? (
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <input
@@ -401,31 +417,28 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
    메인 MOTD 피드 페이지
    ========================================================= */
 export default function MOTDPage() {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'all' | 'following'>('all')
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
-  const [followingIds, setFollowingIds] = useState<string[]>([])
-  const [tasteModal, setTasteModal] = useState<Review | null>(null)
-  const [profileModal, setProfileModal] = useState<string | null>(null)
+  const [reviews,       setReviews]       = useState<Review[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [tab,           setTab]           = useState<'all' | 'following'>('all')
+  const [currentUser,   setCurrentUser]   = useState<string | null>(null)
+  const [followingIds,  setFollowingIds]  = useState<string[]>([])
+  const [tasteModal,    setTasteModal]    = useState<Review | null>(null)
+  const [profileModal,  setProfileModal]  = useState<string | null>(null)
 
   useEffect(() => {
     const init = async () => {
-      /* 유저 정보 */
       const { data: { user } } = await supabase.auth.getUser()
       const uid = user?.id ?? null
       setCurrentUser(uid)
 
-      /* 팔로잉 목록 */
       if (uid) {
         const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
         setFollowingIds(fol?.map(f => f.following_id) ?? [])
       }
 
-      /* 리뷰 조회 */
       const { data, error } = await supabase
         .from('reviews')
         .select('*, stores(id,name,category,address), user_taste_profile(nickname,bio,taste_mbti)')
@@ -435,8 +448,6 @@ export default function MOTDPage() {
       if (error) { console.error('리뷰 조회 오류:', error); setLoading(false); return }
 
       const list = (data || []) as Review[]
-
-      /* 좋아요 수 + 상태를 배치 처리 */
       const reviewIds = list.map(r => r.id)
       const storeIds  = list.map(r => r.store_id).filter(Boolean) as string[]
 
@@ -446,24 +457,23 @@ export default function MOTDPage() {
         uid && storeIds.length ? supabase.from('saved_stores').select('store_id').eq('user_id', uid).in('store_id', storeIds) : { data: [] },
       ])
 
-      const likeCountMap  = (allLikes || []).reduce<Record<string, number>>((acc, l) => { acc[l.review_id] = (acc[l.review_id] || 0) + 1; return acc }, {})
-      const myLikeSet     = new Set((myLikes || []).map(l => l.review_id))
-      const mySaveSet     = new Set((mySaves || []).map(s => s.store_id))
+      const likeCountMap = (allLikes || []).reduce<Record<string, number>>((acc, l) => {
+        acc[l.review_id] = (acc[l.review_id] || 0) + 1; return acc
+      }, {})
+      const myLikeSet = new Set((myLikes || []).map((l: any) => l.review_id))
+      const mySaveSet = new Set((mySaves || []).map((s: any) => s.store_id))
 
-      const withMeta: Review[] = list.map(r => ({
+      setReviews(list.map(r => ({
         ...r,
         like_count: likeCountMap[r.id] ?? 0,
         is_liked:   myLikeSet.has(r.id),
         is_saved:   r.store_id ? mySaveSet.has(r.store_id) : false,
-      }))
-
-      setReviews(withMeta)
+      })))
       setLoading(false)
     }
     init()
   }, [])
 
-  /* 좋아요 토글 */
   const toggleLike = async (e: React.MouseEvent, review: Review) => {
     e.stopPropagation()
     if (!currentUser) { router.push('/login'); return }
@@ -478,7 +488,6 @@ export default function MOTDPage() {
     ))
   }
 
-  /* 저장 토글 */
   const toggleSave = async (e: React.MouseEvent, review: Review) => {
     e.stopPropagation()
     if (!currentUser) { router.push('/login'); return }
@@ -491,7 +500,6 @@ export default function MOTDPage() {
     setReviews(rs => rs.map(r => r.id === review.id ? { ...r, is_saved: !r.is_saved } : r))
   }
 
-  /* 탭 필터 */
   const filtered = tab === 'following'
     ? reviews.filter(r => followingIds.includes(r.user_id))
     : reviews
@@ -556,7 +564,7 @@ export default function MOTDPage() {
         <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filtered.map(review => {
             const photos = parsePhotos(review.photos)
-            const total = Math.round(
+            const total  = Math.round(
               ((review.taste_score ?? 5) + (review.portion_score ?? 5) + (review.value_score ?? 5) +
                (review.spiciness ?? 5) + (review.saltiness ?? 5) + (review.sweetness ?? 5)) / 6 * 10
             ) / 10
@@ -649,7 +657,6 @@ export default function MOTDPage() {
                         </p>
                       </div>
                     </div>
-                    {/* ✅ 모든 카드에 팔로우 버튼 */}
                     <FollowButton targetId={review.user_id} currentUserId={currentUser} />
                   </div>
 
@@ -710,7 +717,9 @@ export default function MOTDPage() {
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex', padding: '8px 0', zIndex: 100
+        display: 'flex',
+        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
+        zIndex: 100
       }}>
         {[
           { icon: '🗺️', label: '지도',   path: '/map' },
@@ -725,14 +734,16 @@ export default function MOTDPage() {
             cursor: 'pointer', padding: '4px 0'
           }}>
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', color: '#999' }}>{item.label}</span>
+            <span style={{ fontSize: '10px', color: item.path === '/feed' ? '#FF5A3D' : '#999' }}>
+              {item.label}
+            </span>
           </button>
         ))}
       </nav>
 
       {/* ── 팝업 ── */}
-      {tasteModal   && <TasteModal   review={tasteModal}    onClose={() => setTasteModal(null)} />}
-      {profileModal && <ProfileModal userId={profileModal}  onClose={() => setProfileModal(null)} />}
+      {tasteModal   && <TasteModal   review={tasteModal}   onClose={() => setTasteModal(null)} />}
+      {profileModal && <ProfileModal userId={profileModal} onClose={() => setProfileModal(null)} />}
     </div>
   )
 }
