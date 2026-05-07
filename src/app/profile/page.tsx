@@ -15,14 +15,14 @@ const generateRandomNickname = () => {
 
 /* ── 맛 MBTI 목록 ── */
 const TASTE_MBTIS = [
-  { value: '매운맛 탐험가 🌶️',   desc: '자극적이고 강렬한 맛을 좋아해요' },
-  { value: '달콤한 미식가 🍯',    desc: '달콤하고 부드러운 맛을 선호해요' },
-  { value: '담백함 추구자 🥢',    desc: '깔끔하고 자극 없는 맛을 좋아해요' },
-  { value: '짭짤함 헌터 🧂',     desc: '짭조름한 감칠맛을 즐겨요' },
-  { value: '고소함 마스터 🌰',    desc: '고소하고 깊은 맛을 추구해요' },
-  { value: '새콤달콤 여행자 🍋',  desc: '새콤하면서 달콤한 밸런스를 좋아해요' },
-  { value: '양 중시 파워 🍱',     desc: '맛도 중요하지만 양이 최고예요' },
-  { value: '가성비 분석가 💰',    desc: '가격 대비 만족도를 꼼꼼히 따져요' },
+  { value: '매운맛 탐험가 🌶️',  desc: '자극적이고 강렬한 맛을 좋아해요' },
+  { value: '달콤한 미식가 🍯',   desc: '달콤하고 부드러운 맛을 선호해요' },
+  { value: '담백함 추구자 🥢',   desc: '깔끔하고 자극 없는 맛을 좋아해요' },
+  { value: '짭짤함 헌터 🧂',    desc: '짭조름한 감칠맛을 즐겨요' },
+  { value: '고소함 마스터 🌰',   desc: '고소하고 깊은 맛을 추구해요' },
+  { value: '새콤달콤 여행자 🍋', desc: '새콤하면서 달콤한 밸런스를 좋아해요' },
+  { value: '양 중시 파워 🍱',    desc: '맛도 중요하지만 양이 최고예요' },
+  { value: '가성비 분석가 💰',   desc: '가격 대비 만족도를 꼼꼼히 따져요' },
 ]
 
 interface UserProfile {
@@ -30,45 +30,43 @@ interface UserProfile {
   nickname: string
   bio: string | null
   taste_mbti: string | null
-  taste_scores: {
-    taste: number; portion: number; value: number
-    spiciness: number; saltiness: number; sweetness: number
-  } | null
 }
 
 interface Review {
-  id: string; menu_name: string | null; content: string | null
-  star_score: number | null; created_at: string; one_line_review: string | null
+  id: string
+  menu_name: string | null
+  content: string | null
+  one_line_review: string | null
+  star_score: number | null
+  created_at: string
   stores: { name: string; category: string } | null
 }
 
 export default function ProfilePage() {
-  const router  = useRouter()
+  const router   = useRouter()
   const supabase = createClient()
 
-  const [profile,         setProfile]         = useState<UserProfile | null>(null)
-  const [reviews,         setReviews]         = useState<Review[]>([])
-  const [loading,         setLoading]         = useState(true)
-  const [editing,         setEditing]         = useState(false)
-  const [nickname,        setNickname]        = useState('')
-  const [bio,             setBio]             = useState('')
-  const [tasteMbti,       setTasteMbti]       = useState('')
-  const [saving,          setSaving]          = useState(false)
-  const [followerCount,   setFollowerCount]   = useState(0)
-  const [followingCount,  setFollowingCount]  = useState(0)
-  const [showMbtiPicker,  setShowMbtiPicker]  = useState(false)
-  const [userId,          setUserId]          = useState<string | null>(null)
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const [reviews,        setReviews]        = useState<Review[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [editing,        setEditing]        = useState(false)
+  const [nickname,       setNickname]       = useState('')
+  const [bio,            setBio]            = useState('')
+  const [tasteMbti,      setTasteMbti]      = useState('')
+  const [saving,         setSaving]         = useState(false)
+  const [followerCount,  setFollowerCount]  = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const [showMbtiPicker, setShowMbtiPicker] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
-      setUserId(user.id)
 
       const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }] = await Promise.all([
         supabase.from('user_taste_profile').select('*').eq('user_id', user.id).single(),
         supabase.from('reviews')
-          .select('id, menu_name, content, star_score, created_at, one_line_review, stores(name, category)')
+          .select('id, menu_name, content, one_line_review, star_score, created_at, stores(name, category)')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(20),
@@ -82,15 +80,27 @@ export default function ProfilePage() {
         setBio(p.bio || '')
         setTasteMbti(p.taste_mbti || '')
       } else {
-        /* 프로필 없으면 랜덤 닉네임으로 자동 생성 */
         const autoNick = generateRandomNickname()
         await supabase.from('user_taste_profile').insert({ user_id: user.id, nickname: autoNick })
         setNickname(autoNick)
-        setProfile({ user_id: user.id, nickname: autoNick, bio: null, taste_mbti: null, taste_scores: null })
+        setProfile({ user_id: user.id, nickname: autoNick, bio: null, taste_mbti: null })
       }
 
-      setReviews((rv || []) as Review[])
-      setFollowerCount(fwer?.length || 0)
+      /* stores 배열→객체 변환 */
+      const parsedReviews: Review[] = (rv || []).map((r: any) => ({
+        id:              r.id,
+        menu_name:       r.menu_name,
+        content:         r.content,
+        one_line_review: r.one_line_review,
+        star_score:      r.star_score,
+        created_at:      r.created_at,
+        stores: Array.isArray(r.stores)
+          ? (r.stores[0] ?? null)
+          : (r.stores ?? null),
+      }))
+
+      setReviews(parsedReviews)
+      setFollowerCount(fwer?.length  || 0)
       setFollowingCount(fwing?.length || 0)
       setLoading(false)
     }
@@ -101,14 +111,12 @@ export default function ProfilePage() {
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     await supabase.from('user_taste_profile').upsert({
       user_id:    user.id,
       nickname:   nickname.trim(),
-      bio:        bio.trim()        || null,
-      taste_mbti: tasteMbti.trim()  || null,
+      bio:        bio.trim()       || null,
+      taste_mbti: tasteMbti.trim() || null,
     })
-
     setProfile(p => p ? {
       ...p,
       nickname:   nickname.trim(),
@@ -117,10 +125,6 @@ export default function ProfilePage() {
     } : p)
     setEditing(false)
     setSaving(false)
-  }
-
-  const handleRandomNickname = () => {
-    setNickname(generateRandomNickname())
   }
 
   const handleLogout = async () => {
@@ -143,17 +147,18 @@ export default function ProfilePage() {
         background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
-        <h1
-          onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}
-        >🍜 맛지도</h1>
+        <h1 onClick={() => router.push('/map')}
+          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
+          🍜 맛지도
+        </h1>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={handleLogout} style={{
             border: '1px solid #ddd', background: 'white', color: '#aaa',
             borderRadius: '20px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer'
           }}>로그아웃</button>
           <button onClick={() => { setEditing(!editing); setShowMbtiPicker(false) }} style={{
-            border: '1px solid #FF5A3D', background: editing ? '#FF5A3D' : 'white',
+            border: '1px solid #FF5A3D',
+            background: editing ? '#FF5A3D' : 'white',
             color: editing ? 'white' : '#FF5A3D',
             borderRadius: '20px', padding: '6px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
           }}>{editing ? '취소' : '편집'}</button>
@@ -162,106 +167,77 @@ export default function ProfilePage() {
 
       <div style={{ padding: '16px' }}>
 
-        {/* ── 프로필 카드 ── */}
+        {/* 프로필 카드 */}
         <div style={{
           background: 'white', borderRadius: '20px', padding: '24px',
           boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: '16px'
         }}>
-          {/* 아바타 */}
           <div style={{
             width: '80px', height: '80px', borderRadius: '50%',
             background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontSize: '32px', fontWeight: '700',
-            margin: '0 auto 20px'
+            color: 'white', fontSize: '32px', fontWeight: '700', margin: '0 auto 20px'
           }}>
             {(profile?.nickname || '?')[0]}
           </div>
 
           {editing ? (
-            /* ── 편집 모드 ── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* 닉네임 + 랜덤 버튼 */}
+              {/* 닉네임 + 랜덤 */}
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  value={nickname}
-                  onChange={e => setNickname(e.target.value)}
+                <input value={nickname} onChange={e => setNickname(e.target.value)}
                   placeholder="닉네임"
-                  style={{
-                    flex: 1, padding: '10px 14px', borderRadius: '12px',
-                    border: '1px solid #eee', fontSize: '14px', outline: 'none'
-                  }}
-                />
-                <button onClick={handleRandomNickname} style={{
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: '12px', border: '1px solid #eee', fontSize: '14px', outline: 'none' }} />
+                <button onClick={() => setNickname(generateRandomNickname())} style={{
                   padding: '10px 14px', borderRadius: '12px', border: '1px solid #FF5A3D',
-                  background: 'white', color: '#FF5A3D', fontSize: '12px',
-                  fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
+                  background: 'white', color: '#FF5A3D', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
                 }}>🎲 랜덤</button>
               </div>
 
               {/* 맛 MBTI 선택 */}
               <div>
-                <button
-                  onClick={() => setShowMbtiPicker(!showMbtiPicker)}
-                  style={{
-                    width: '100%', padding: '10px 14px', borderRadius: '12px',
-                    border: '1px solid #eee', background: 'white', fontSize: '14px',
-                    textAlign: 'left', cursor: 'pointer', color: tasteMbti ? '#333' : '#aaa',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                  }}
-                >
+                <button onClick={() => setShowMbtiPicker(!showMbtiPicker)} style={{
+                  width: '100%', padding: '10px 14px', borderRadius: '12px',
+                  border: '1px solid #eee', background: 'white', fontSize: '14px',
+                  textAlign: 'left', cursor: 'pointer', color: tasteMbti ? '#333' : '#aaa',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
                   <span>{tasteMbti || '맛 MBTI 선택하기'}</span>
                   <span>{showMbtiPicker ? '▲' : '▼'}</span>
                 </button>
                 {showMbtiPicker && (
-                  <div style={{
-                    background: 'white', borderRadius: '12px', border: '1px solid #eee',
-                    marginTop: '6px', overflow: 'hidden'
-                  }}>
+                  <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #eee', marginTop: '6px', overflow: 'hidden' }}>
                     {TASTE_MBTIS.map(m => (
-                      <div
-                        key={m.value}
-                        onClick={() => { setTasteMbti(m.value); setShowMbtiPicker(false) }}
-                        style={{
-                          padding: '12px 14px', borderBottom: '1px solid #f5f5f5',
-                          cursor: 'pointer', background: tasteMbti === m.value ? '#fff3f0' : 'white'
-                        }}
-                      >
+                      <div key={m.value} onClick={() => { setTasteMbti(m.value); setShowMbtiPicker(false) }} style={{
+                        padding: '12px 14px', borderBottom: '1px solid #f5f5f5', cursor: 'pointer',
+                        background: tasteMbti === m.value ? '#fff3f0' : 'white'
+                      }}>
                         <p style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#333' }}>{m.value}</p>
                         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#aaa' }}>{m.desc}</p>
                       </div>
                     ))}
-                    <div
-                      onClick={() => { setTasteMbti(''); setShowMbtiPicker(false) }}
-                      style={{ padding: '12px 14px', cursor: 'pointer', color: '#aaa', fontSize: '13px' }}
-                    >직접 입력하기</div>
+                    <div onClick={() => { setTasteMbti(''); setShowMbtiPicker(false) }}
+                      style={{ padding: '12px 14px', cursor: 'pointer', color: '#aaa', fontSize: '13px' }}>
+                      직접 입력하기
+                    </div>
                   </div>
                 )}
                 {!showMbtiPicker && !TASTE_MBTIS.find(m => m.value === tasteMbti) && (
-                  <input
-                    value={tasteMbti}
-                    onChange={e => setTasteMbti(e.target.value)}
+                  <input value={tasteMbti} onChange={e => setTasteMbti(e.target.value)}
                     placeholder="맛 MBTI 직접 입력"
                     style={{
                       marginTop: '8px', width: '100%', padding: '10px 14px',
                       borderRadius: '12px', border: '1px solid #eee', fontSize: '14px',
                       outline: 'none', boxSizing: 'border-box'
-                    }}
-                  />
+                    }} />
                 )}
               </div>
 
               {/* 자기소개 */}
-              <textarea
-                value={bio}
-                onChange={e => setBio(e.target.value)}
+              <textarea value={bio} onChange={e => setBio(e.target.value)}
                 placeholder="자기소개 (어떤 음식을 좋아하나요?)"
                 rows={3}
-                style={{
-                  padding: '10px 14px', borderRadius: '12px', border: '1px solid #eee',
-                  fontSize: '14px', outline: 'none', resize: 'vertical', lineHeight: '1.6'
-                }}
-              />
+                style={{ padding: '10px 14px', borderRadius: '12px', border: '1px solid #eee', fontSize: '14px', outline: 'none', resize: 'vertical', lineHeight: '1.6' }} />
 
               <button onClick={handleSave} disabled={saving} style={{
                 padding: '14px', borderRadius: '14px', border: 'none',
@@ -270,7 +246,6 @@ export default function ProfilePage() {
               }}>{saving ? '저장 중...' : '저장하기'}</button>
             </div>
           ) : (
-            /* ── 보기 모드 ── */
             <div style={{ textAlign: 'center' }}>
               <p style={{ margin: '0 0 8px', fontSize: '22px', fontWeight: '800', color: '#333' }}>
                 {profile?.nickname || '닉네임 없음'}
@@ -286,16 +261,14 @@ export default function ProfilePage() {
                   {profile.bio}
                 </p>
               )}
-
-              {/* 통계 */}
               <div style={{
-                display: 'flex', justifyContent: 'center', gap: '32px', marginTop: '20px',
-                paddingTop: '20px', borderTop: '1px solid #f5f5f5'
+                display: 'flex', justifyContent: 'center', gap: '32px',
+                marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #f5f5f5'
               }}>
                 {[
-                  { label: '리뷰',    val: reviews.length },
-                  { label: '팔로워',  val: followerCount },
-                  { label: '팔로잉',  val: followingCount },
+                  { label: '리뷰',   val: reviews.length },
+                  { label: '팔로워', val: followerCount },
+                  { label: '팔로잉', val: followingCount },
                 ].map(s => (
                   <div key={s.label} style={{ textAlign: 'center' }}>
                     <p style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#FF5A3D' }}>{s.val}</p>
@@ -307,7 +280,7 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* ── 내 리뷰 ── */}
+        {/* 내 리뷰 */}
         <div style={{
           background: 'white', borderRadius: '20px', padding: '20px',
           boxShadow: '0 2px 12px rgba(0,0,0,0.06)'
@@ -367,7 +340,7 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* 하단 내비 */}
+      {/* 하단 네비 */}
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1px solid #f0f0f0',

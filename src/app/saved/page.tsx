@@ -4,22 +4,24 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
+interface StoreDetail {
+  id: string
+  name: string
+  category: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  phone: string | null
+  review_count: number | null
+  average_rating: number | null
+  kakao_id: string | null
+}
+
 interface SavedStore {
   id: string
   store_id: string
   created_at: string
-  stores: {
-    id: string
-    name: string
-    category: string | null
-    address: string | null
-    latitude: number | null
-    longitude: number | null
-    phone: string | null
-    review_count: number | null
-    average_rating: number | null
-    kakao_id: string | null
-  } | null
+  stores: StoreDetail | null
 }
 
 export default function SavedPage() {
@@ -51,13 +53,18 @@ export default function SavedPage() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('저장 목록 오류:', error)
-        setLoading(false)
-        return
-      }
+      if (error) { console.error('저장 목록 오류:', error); setLoading(false); return }
 
-      const list = (data || []) as SavedStore[]
+      /* stores 배열→객체 변환 */
+      const list: SavedStore[] = (data || []).map((item: any) => ({
+        id:         item.id,
+        store_id:   item.store_id,
+        created_at: item.created_at,
+        stores: Array.isArray(item.stores)
+          ? (item.stores[0] ?? null)
+          : (item.stores ?? null),
+      }))
+
       setSavedStores(list)
 
       const cats = Array.from(
@@ -91,9 +98,7 @@ export default function SavedPage() {
 
   const handleViewMap = (item: SavedStore) => {
     if (!item.stores) return
-    router.push(
-      `/map?lat=${item.stores.latitude}&lng=${item.stores.longitude}&name=${encodeURIComponent(item.stores.name)}`
-    )
+    router.push(`/map?lat=${item.stores.latitude}&lng=${item.stores.longitude}&name=${encodeURIComponent(item.stores.name)}`)
   }
 
   const filtered = filter === '전체'
@@ -101,10 +106,7 @@ export default function SavedPage() {
     : savedStores.filter(s => s.stores?.category === filter)
 
   if (loading) return (
-    <div style={{
-      display: 'flex', justifyContent: 'center', alignItems: 'center',
-      height: '100vh', background: '#f5f5f5', flexDirection: 'column', gap: '12px'
-    }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f5f5f5', flexDirection: 'column', gap: '12px' }}>
       <div style={{ fontSize: '40px' }}>🔖</div>
       <p style={{ color: '#999', fontSize: '14px' }}>저장 목록 불러오는 중...</p>
     </div>
@@ -113,27 +115,25 @@ export default function SavedPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
 
-      {/* ── 헤더 ── */}
+      {/* 헤더 */}
       <div style={{
-        background: 'white', padding: '16px 20px',
-        borderBottom: '1px solid #f0f0f0',
+        background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
         position: 'sticky', top: 0, zIndex: 100,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
-        <h1
-          onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}
-        >🍜 맛지도</h1>
+        <h1 onClick={() => router.push('/map')}
+          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
+          🍜 맛지도
+        </h1>
         <span style={{ fontSize: '11px', color: '#bbb' }}>{filtered.length}개 저장</span>
       </div>
 
-      {/* ── 카테고리 필터 탭 ── */}
+      {/* 카테고리 필터 탭 */}
       {categories.length > 0 && (
         <div style={{
           background: 'white', borderBottom: '1px solid #f0f0f0',
           display: 'flex', overflowX: 'auto', padding: '0 16px',
-          position: 'sticky', top: '57px', zIndex: 99,
-          scrollbarWidth: 'none',
+          position: 'sticky', top: '57px', zIndex: 99, scrollbarWidth: 'none',
         }}>
           {['전체', ...categories].map(cat => (
             <button key={cat} onClick={() => setFilter(cat)} style={{
@@ -148,8 +148,6 @@ export default function SavedPage() {
       )}
 
       <div style={{ padding: '12px 16px' }}>
-
-        {/* ── 빈 상태 ── */}
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 20px' }}>
             <div style={{ fontSize: '56px', marginBottom: '16px' }}>🔖</div>
@@ -165,15 +163,11 @@ export default function SavedPage() {
               fontSize: '15px', fontWeight: '700', cursor: 'pointer'
             }}>🗺️ 지도로 가기</button>
           </div>
-
         ) : (
-
-          /* ── 저장 목록 ── */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {filtered.map(item => {
               const store = item.stores
               if (!store) return null
-
               return (
                 <div key={item.id} style={{
                   background: 'white', borderRadius: '20px', padding: '16px',
@@ -181,39 +175,28 @@ export default function SavedPage() {
                   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
                 }}>
                   <div style={{ flex: 1 }}>
-
                     {store.category && (
                       <span style={{
-                        background: '#fff3f0', color: '#FF5A3D',
-                        borderRadius: '10px', padding: '3px 10px',
-                        fontSize: '11px', fontWeight: '700',
+                        background: '#fff3f0', color: '#FF5A3D', borderRadius: '10px',
+                        padding: '3px 10px', fontSize: '11px', fontWeight: '700',
                         display: 'inline-block', marginBottom: '8px'
                       }}>{store.category}</span>
                     )}
-
                     <h3 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: '800', color: '#333' }}>
                       {store.name}
                     </h3>
-
                     {store.address && (
-                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
-                        📍 {store.address}
-                      </p>
+                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>📍 {store.address}</p>
                     )}
-
                     {store.phone && (
-                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>
-                        📞 {store.phone}
-                      </p>
+                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#aaa' }}>📞 {store.phone}</p>
                     )}
-
                     {(store.average_rating || store.review_count) && (
                       <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#FF5A3D', fontWeight: '700' }}>
                         {store.average_rating ? `⭐ ${store.average_rating.toFixed(1)}` : ''}
                         {store.review_count   ? ` · 리뷰 ${store.review_count}개` : ''}
                       </p>
                     )}
-
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handleWriteReview(item)} style={{
                         background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
@@ -227,7 +210,6 @@ export default function SavedPage() {
                       }}>🗺️ 지도 보기</button>
                     </div>
                   </div>
-
                   <button onClick={() => handleDelete(item.id)} style={{
                     background: 'none', border: 'none', fontSize: '22px',
                     cursor: 'pointer', marginLeft: '10px', flexShrink: 0, padding: '4px'
@@ -239,13 +221,11 @@ export default function SavedPage() {
         )}
       </div>
 
-      {/* ── 하단 네비게이션 ── */}
+      {/* 하단 네비 */}
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
         background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex',
-        padding: '8px 0 calc(8px + env(safe-area-inset-bottom))',
-        zIndex: 100
+        display: 'flex', padding: '8px 0 calc(8px + env(safe-area-inset-bottom))', zIndex: 100
       }}>
         {[
           { icon: '🗺️', label: '지도',   path: '/map' },
