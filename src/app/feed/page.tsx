@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -23,397 +23,456 @@ interface UserProfile {
 interface Review {
   id: string
   user_id: string
-  store_id: string | null
-  content: string | null
-  menu_name: string | null
-  one_line_review: string | null
-  star_score: number | null
-  want_to_go_back: boolean | null
-  taste_score: number
-  portion_score: number
-  value_score: number
-  spiciness: number | null
-  saltiness: number | null
-  sweetness: number | null
-  texture_tags: string[] | null
-  situation_tags: string[] | null
-  photos: string[] | null
+  store_id: string
+  menu_name: string
+  one_line_review: string
+  content: string
+  total_rating: number
+  revisit: boolean
+  photos: string | string[]
+  tags: string[]
   created_at: string
-  stores: StoreInfo | null
-  user_taste_profile: UserProfile | null
-  like_count: number
-  is_liked: boolean
-  is_saved: boolean
+  menu_price?: number
+  saltiness?: number
+  spiciness?: number
+  sweetness?: number
+  oiliness?: number
+  umami?: number
+  desired_price?: number
+  store?: StoreInfo
+  user?: UserProfile
 }
 
 interface Comment {
   id: string
-  user_id: string
   review_id: string
+  user_id: string
   content: string
   created_at: string
-  user_taste_profile: { nickname: string } | null
+  user?: UserProfile
 }
 
-/* =========================================================
-   사진 파싱
-   ========================================================= */
-function parsePhotos(raw: unknown): string[] {
-  if (!raw) return []
-  if (Array.isArray(raw)) return (raw as unknown[]).filter((x): x is string => typeof x === 'string')
-  if (typeof raw === 'string') {
-    try { const p = JSON.parse(raw); return Array.isArray(p) ? p : [] } catch { return [] }
-  }
-  return []
-}
-
-/* =========================================================
-   맛 점수 팝업
-   ========================================================= */
-function TasteModal({ review, onClose }: { review: Review; onClose: () => void }) {
-  const items = [
-    { label: '맛',     emoji: '🍽️', value: review.taste_score   ?? 5 },
-    { label: '양',     emoji: '🍱', value: review.portion_score ?? 5 },
-    { label: '가성비', emoji: '💰', value: review.value_score   ?? 5 },
-    { label: '맵기',   emoji: '🌶️', value: review.spiciness     ?? 5 },
-    { label: '짠기',   emoji: '🧂', value: review.saltiness     ?? 5 },
-    { label: '단기',   emoji: '🍯', value: review.sweetness     ?? 5 },
-  ]
-  const colors = ['#FF5A3D', '#FF9800', '#4CAF50', '#F44336', '#2196F3', '#9C27B0']
-  const total  = Math.round(items.reduce((s, i) => s + i.value, 0) / items.length * 10) / 10
-
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'white', borderRadius: '24px 24px 0 0', width: '100%',
-        maxWidth: '480px', padding: '24px 20px 40px'
-      }}>
-        <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#ddd', margin: '0 auto 20px' }} />
-        <h3 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: '800', color: '#333' }}>🍴 맛 분석 리포트</h3>
-        <p style={{ margin: '0 0 18px', fontSize: '13px', color: '#aaa' }}>
-          {review.stores?.name} · {review.menu_name || '메뉴 미입력'}
-        </p>
-        {items.map((item, i) => (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <span style={{ width: '20px', textAlign: 'center', fontSize: '16px' }}>{item.emoji}</span>
-            <span style={{ width: '44px', fontSize: '13px', color: '#555', fontWeight: '600' }}>{item.label}</span>
-            <div style={{ flex: 1, height: '8px', borderRadius: '4px', background: '#f0f0f0', overflow: 'hidden' }}>
-              <div style={{ width: `${item.value * 10}%`, height: '100%', background: colors[i], borderRadius: '4px' }} />
-            </div>
-            <span style={{ width: '28px', textAlign: 'right', fontWeight: '700', color: colors[i], fontSize: '14px' }}>{item.value}</span>
-          </div>
-        ))}
-        <div style={{
-          marginTop: '16px', padding: '14px 16px', borderRadius: '14px',
-          background: 'linear-gradient(135deg,#FF5A3D18,#FF8C4218)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-        }}>
-          <span style={{ fontWeight: '700', color: '#333', fontSize: '15px' }}>종합 점수</span>
-          <span style={{ fontWeight: '900', color: '#FF5A3D', fontSize: '24px' }}>{total}</span>
-        </div>
-        {review.content && (
-          <p style={{
-            margin: '14px 0 0', fontSize: '14px', color: '#555', lineHeight: '1.6',
-            background: '#fafafa', borderRadius: '12px', padding: '12px 14px'
-          }}>{review.content}</p>
-        )}
-        {((review.texture_tags?.length ?? 0) + (review.situation_tags?.length ?? 0)) > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
-            {review.texture_tags?.map(t => (
-              <span key={t} style={{ background: '#fff3f0', color: '#FF5A3D', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-            ))}
-            {review.situation_tags?.map(t => (
-              <span key={t} style={{ background: '#f0f7ff', color: '#2196F3', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-            ))}
-          </div>
-        )}
-        <button onClick={onClose} style={{
-          marginTop: '20px', width: '100%', padding: '14px', borderRadius: '14px',
-          border: 'none', background: '#FF5A3D', color: 'white', fontSize: '15px', fontWeight: '700', cursor: 'pointer'
-        }}>닫기</button>
-      </div>
-    </div>
-  )
-}
-
-/* =========================================================
-   미니 프로필 팝업
-   ========================================================= */
 interface MiniProfile {
+  userId: string
   nickname: string
   bio?: string
   taste_mbti?: string
-  review_count: number
-  follower_count: number
-  following_count: number
-  reviews: {
-    id: string
-    menu_name: string | null
-    star_score: number | null
-    stores: { name: string } | null
-  }[]
+  reviewCount: number
+  isFollowing: boolean
 }
 
-function ProfileModal({ userId, onClose }: { userId: string; onClose: () => void }) {
-  const router   = useRouter()
-  const supabase = createClient()
-  const [profile, setProfile] = useState<MiniProfile | null>(null)
+/* =========================================================
+   유틸리티
+   ========================================================= */
+const supabase = createClient()
 
-  useEffect(() => {
-    const load = async () => {
-      const [{ data: p }, { data: rv }, { data: fwer }, { data: fwing }] = await Promise.all([
-        supabase.from('user_taste_profile').select('*').eq('user_id', userId).single(),
-        supabase.from('reviews')
-          .select('id, menu_name, star_score, stores(name)')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(5),
-        supabase.from('follows').select('id').eq('following_id', userId),
-        supabase.from('follows').select('id').eq('follower_id', userId),
-      ])
+function parsePhotos(photos: string | string[] | null | undefined): string[] {
+  if (!photos) return []
+  if (Array.isArray(photos)) return photos.filter(Boolean)
+  try {
+    const parsed = JSON.parse(photos)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+  } catch {
+    return photos ? [photos] : []
+  }
+}
 
-      const reviews = (rv || []).map((r: any) => ({
-        id:         r.id,
-        menu_name:  r.menu_name,
-        star_score: r.star_score,
-        stores:     Array.isArray(r.stores) ? r.stores[0] ?? null : r.stores ?? null,
-      }))
+function timeAgo(dateStr: string): string {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  if (diff < 60) return '방금 전'
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}일 전`
+  return new Date(dateStr).toLocaleDateString('ko-KR')
+}
 
-      setProfile({
-        nickname:        p?.nickname      || '익명',
-        bio:             p?.bio,
-        taste_mbti:      p?.taste_mbti,
-        review_count:    rv?.length       || 0,
-        follower_count:  fwer?.length     || 0,
-        following_count: fwing?.length    || 0,
-        reviews,
-      })
-    }
-    load()
-  }, [userId])
+function getInitial(name?: string): string {
+  return name ? name.charAt(0).toUpperCase() : '?'
+}
+
+function getAvatarBg(name?: string): string {
+  const colors = ['#1a1a1a', '#2d2d2d', '#404040', '#333', '#555', '#222']
+  if (!name) return colors[0]
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
+
+/* =========================================================
+   Avatar — 흑백
+   ========================================================= */
+function Avatar({ name, size = 32 }: { name?: string; size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: getAvatarBg(name),
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontWeight: 700,
+        fontSize: size * 0.38,
+        flexShrink: 0,
+        letterSpacing: '-0.5px',
+      }}
+    >
+      {getInitial(name)}
+    </div>
+  )
+}
+
+/* =========================================================
+   TasteModal
+   ========================================================= */
+function TasteModal({ review, onClose }: { review: Review; onClose: () => void }) {
+  const tastes = [
+    { label: '짠맛', value: review.saltiness },
+    { label: '매운맛', value: review.spiciness },
+    { label: '단맛', value: review.sweetness },
+    { label: '기름짐', value: review.oiliness },
+    { label: '감칠맛', value: review.umami },
+  ].filter((t) => t.value !== undefined && t.value !== null)
 
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 300
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'white', borderRadius: '24px 24px 0 0', width: '100%',
-        maxWidth: '480px', padding: '24px 20px 40px', maxHeight: '80vh', overflowY: 'auto'
-      }}>
-        <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#ddd', margin: '0 auto 20px' }} />
-        {!profile ? (
-          <p style={{ textAlign: 'center', color: '#aaa' }}>로딩 중...</p>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: '20px 20px 0 0',
+          padding: '28px 24px 44px',
+          width: '100%',
+          maxWidth: 480,
+          maxHeight: '75vh',
+          overflowY: 'auto',
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 3,
+            borderRadius: 2,
+            background: '#E0E0E0',
+            margin: '0 auto 24px',
+          }}
+        />
+        <p style={{ fontSize: 16, fontWeight: 800, color: '#111', marginBottom: 4 }}>
+          맛 분석 리포트
+        </p>
+        <p style={{ fontSize: 12, color: '#999', marginBottom: 24 }}>
+          {review.store?.name} · {review.menu_name}
+        </p>
+        {tastes.length === 0 ? (
+          <p style={{ textAlign: 'center', color: '#999', padding: '20px 0', fontSize: 14 }}>
+            맛 분석 데이터가 없습니다
+          </p>
         ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
-              <div style={{
-                width: '52px', height: '52px', borderRadius: '50%',
-                background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'white', fontSize: '22px', fontWeight: '700', flexShrink: 0
-              }}>{profile.nickname[0]}</div>
-              <div>
-                <p style={{ margin: 0, fontWeight: '800', fontSize: '17px', color: '#333' }}>{profile.nickname}</p>
-                {profile.taste_mbti && (
-                  <span style={{ background: '#fff3f0', color: '#FF5A3D', borderRadius: '12px', padding: '2px 10px', fontSize: '11px', fontWeight: '700' }}>
-                    {profile.taste_mbti}
-                  </span>
-                )}
+          tastes.map((t) => (
+            <div key={t.label} style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: 7,
+                }}
+              >
+                <span style={{ fontSize: 13, color: '#111', fontWeight: 500 }}>{t.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#111' }}>
+                  {t.value}
+                  <span style={{ fontWeight: 400, color: '#999' }}>/10</span>
+                </span>
+              </div>
+              <div
+                style={{
+                  height: 6,
+                  background: '#F0F0F0',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${(((t.value as number) || 0) / 10) * 100}%`,
+                    background: '#111',
+                    borderRadius: 3,
+                  }}
+                />
               </div>
             </div>
-            {profile.bio && (
-              <p style={{ fontSize: '13px', color: '#666', lineHeight: '1.5', marginBottom: '14px' }}>{profile.bio}</p>
-            )}
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-              {[
-                { label: '리뷰',   val: profile.review_count },
-                { label: '팔로워', val: profile.follower_count },
-                { label: '팔로잉', val: profile.following_count },
-              ].map(s => (
-                <div key={s.label} style={{ textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontWeight: '800', fontSize: '18px', color: '#FF5A3D' }}>{s.val}</p>
-                  <p style={{ margin: 0, fontSize: '11px', color: '#aaa' }}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-            <p style={{ fontWeight: '700', fontSize: '13px', color: '#333', margin: '0 0 8px' }}>최근 리뷰</p>
-            {profile.reviews.map(r => (
-              <div key={r.id} style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '8px 0', borderBottom: '1px solid #f5f5f5', fontSize: '13px', color: '#555'
-              }}>
-                <span>{r.stores?.name || '?'} · {r.menu_name || '-'}</span>
-                <span>{r.star_score ? '⭐'.repeat(r.star_score) : '-'}</span>
-              </div>
-            ))}
-            <button onClick={() => { onClose(); router.push(`/profile/${userId}`) }} style={{
-              marginTop: '16px', width: '100%', padding: '12px', borderRadius: '14px',
-              border: '1px solid #FF5A3D', background: 'white', color: '#FF5A3D',
-              fontSize: '14px', fontWeight: '700', cursor: 'pointer'
-            }}>전체 프로필 보기</button>
-          </>
+          ))
         )}
+        {review.desired_price && (
+          <div
+            style={{
+              marginTop: 24,
+              padding: '16px 18px',
+              background: '#F7F7F7',
+              borderRadius: 12,
+              border: '1px solid #E8E8E8',
+            }}
+          >
+            <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              적정 가격 제안
+            </p>
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#111', marginTop: 6 }}>
+              ₩{review.desired_price.toLocaleString()}
+            </p>
+          </div>
+        )}
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            padding: '15px',
+            background: '#111',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 12,
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: 'pointer',
+            marginTop: 28,
+            letterSpacing: '-0.2px',
+          }}
+        >
+          닫기
+        </button>
       </div>
     </div>
   )
 }
 
 /* =========================================================
-   팔로우 버튼
+   ProfileModal
    ========================================================= */
-function FollowButton({ targetId, currentUserId }: { targetId: string; currentUserId: string | null }) {
-  const router   = useRouter()
-  const supabase = createClient()
-  const [following, setFollowing] = useState(false)
-  const [loading,   setLoading]   = useState(true)
-  const isMe = currentUserId === targetId
-
-  useEffect(() => {
-    if (!currentUserId || isMe) { setLoading(false); return }
-    supabase.from('follows')
-      .select('id')
-      .eq('follower_id', currentUserId)
-      .eq('following_id', targetId)
-      .maybeSingle()
-      .then(({ data }) => { setFollowing(!!data); setLoading(false) })
-  }, [currentUserId, targetId, isMe])
-
-  if (isMe) return (
-    <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: '700', background: '#f5f5f5', color: '#aaa' }}>나</span>
-  )
-  if (!currentUserId) return (
-    <button onClick={e => { e.stopPropagation(); router.push('/login') }} style={{
-      padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
-      border: '1.5px solid #ddd', background: 'white', color: '#aaa', cursor: 'pointer'
-    }}>팔로우</button>
-  )
-  if (loading) return (
-    <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '11px', background: '#f0f0f0', color: 'transparent', minWidth: '60px', display: 'inline-block' }}>ㅤ</span>
-  )
-
-  const toggle = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLoading(true)
-    if (following) {
-      await supabase.from('follows').delete().eq('follower_id', currentUserId).eq('following_id', targetId)
-    } else {
-      await supabase.from('follows').insert({ follower_id: currentUserId, following_id: targetId })
-    }
-    setFollowing(f => !f)
-    setLoading(false)
-  }
-
+function ProfileModal({
+  profile,
+  onClose,
+  onFollow,
+  currentUserId,
+}: {
+  profile: MiniProfile
+  onClose: () => void
+  onFollow: (userId: string, isFollowing: boolean) => void
+  currentUserId: string | null
+}) {
   return (
-    <button onClick={toggle} style={{
-      padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', cursor: 'pointer',
-      border: `1.5px solid ${following ? '#ddd' : '#FF5A3D'}`,
-      background: following ? '#f5f5f5' : '#FF5A3D',
-      color: following ? '#999' : 'white',
-    }}>{following ? '팔로잉 ✓' : '+ 팔로우'}</button>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: '20px 20px 0 0',
+          padding: '28px 24px 44px',
+          width: '100%',
+          maxWidth: 480,
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 3,
+            borderRadius: 2,
+            background: '#E0E0E0',
+            margin: '0 auto 24px',
+          }}
+        />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            marginBottom: 20,
+          }}
+        >
+          <Avatar name={profile.nickname} size={56} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 800, fontSize: 16, color: '#111' }}>{profile.nickname}</p>
+            {profile.taste_mbti && (
+              <p style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{profile.taste_mbti}</p>
+            )}
+            <p style={{ fontSize: 12, color: '#999', marginTop: 3 }}>
+              리뷰 {profile.reviewCount}개
+            </p>
+          </div>
+          {currentUserId && currentUserId !== profile.userId && (
+            <button
+              onClick={() => onFollow(profile.userId, profile.isFollowing)}
+              style={{
+                padding: '9px 20px',
+                background: profile.isFollowing ? '#fff' : '#111',
+                color: profile.isFollowing ? '#111' : '#fff',
+                border: `1.5px solid ${profile.isFollowing ? '#E0E0E0' : '#111'}`,
+                borderRadius: 9,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+                letterSpacing: '-0.2px',
+              }}
+            >
+              {profile.isFollowing ? '팔로잉' : '팔로우'}
+            </button>
+          )}
+        </div>
+        {profile.bio && (
+          <p
+            style={{
+              fontSize: 13,
+              color: '#555',
+              lineHeight: 1.65,
+              marginBottom: 20,
+              paddingTop: 16,
+              borderTop: '1px solid #F0F0F0',
+            }}
+          >
+            {profile.bio}
+          </p>
+        )}
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%',
+            padding: 13,
+            background: '#F5F5F5',
+            border: 'none',
+            borderRadius: 10,
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: 'pointer',
+            color: '#111',
+          }}
+        >
+          닫기
+        </button>
+      </div>
+    </div>
   )
 }
 
 /* =========================================================
-   댓글 섹션
+   CommentsSection
    ========================================================= */
-function CommentsSection({ reviewId, currentUserId }: { reviewId: string; currentUserId: string | null }) {
-  const supabase = createClient()
-  const [comments,     setComments]     = useState<Comment[]>([])
-  const [text,         setText]         = useState('')
-  const [open,         setOpen]         = useState(false)
-  const [commentCount, setCommentCount] = useState(0)
-
-  const load = useCallback(async () => {
-    const { data: commentData, count } = await supabase
-      .from('comments')
-      .select('*', { count: 'exact' })
-      .eq('review_id', reviewId)
-      .order('created_at', { ascending: true })
-      .limit(20)
-
-    if (!commentData || commentData.length === 0) {
-      setComments([])
-      setCommentCount(count ?? 0)
-      return
-    }
-
-    const userIds = [...new Set(commentData.map((c: any) => c.user_id as string))]
-    const { data: profiles } = await supabase
-      .from('user_taste_profile')
-      .select('user_id, nickname')
-      .in('user_id', userIds)
-
-    const profileMap: Record<string, string> = Object.fromEntries(
-      (profiles || []).map((p: any) => [p.user_id, p.nickname])
-    )
-
-    const merged: Comment[] = commentData.map((c: any) => ({
-      id:         c.id,
-      user_id:    c.user_id,
-      review_id:  c.review_id,
-      content:    c.content,
-      created_at: c.created_at,
-      user_taste_profile: { nickname: profileMap[c.user_id] || '익명' },
-    }))
-
-    setComments(merged)
-    setCommentCount(count ?? 0)
-  }, [reviewId])
+function CommentsSection({
+  reviewId,
+  currentUserId,
+}: {
+  reviewId: string
+  currentUserId: string | null
+}) {
+  const [comments, setComments] = useState<Comment[]>([])
+  const [input, setInput] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     supabase
       .from('comments')
-      .select('id', { count: 'exact' })
+      .select('*, user:user_profiles(nickname)')
       .eq('review_id', reviewId)
-      .then(({ count }) => setCommentCount(count ?? 0))
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (data) setComments(data as Comment[])
+      })
   }, [reviewId])
 
-  const submit = async () => {
-    if (!text.trim() || !currentUserId) return
-    await supabase.from('comments').insert({ review_id: reviewId, user_id: currentUserId, content: text.trim() })
-    setText('')
-    load()
+  const handleSubmit = async () => {
+    if (!input.trim() || !currentUserId) return
+    setSubmitting(true)
+    const { data } = await supabase
+      .from('comments')
+      .insert({ review_id: reviewId, user_id: currentUserId, content: input })
+      .select('*, user:user_profiles(nickname)')
+      .single()
+    if (data) setComments((prev) => [...prev, data as Comment])
+    setInput('')
+    setSubmitting(false)
   }
 
   return (
-    <div style={{ borderTop: '1px solid #f5f5f5', marginTop: '12px', paddingTop: '12px' }}>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(o => !o); if (!open) load() }}
-        style={{ border: 'none', background: 'none', color: '#999', fontSize: '12px', cursor: 'pointer', padding: 0, fontWeight: '600' }}
-      >
-        💬 댓글 {commentCount > 0 ? commentCount : ''} {open ? '접기 ▲' : '보기 ▼'}
-      </button>
-      {open && (
-        <div style={{ marginTop: '10px' }} onClick={e => e.stopPropagation()}>
-          {comments.length === 0 && (
-            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', padding: '8px 0' }}>첫 댓글을 남겨보세요!</p>
-          )}
-          {comments.map(c => (
-            <div key={c.id} style={{ marginBottom: '8px', fontSize: '13px' }}>
-              <span style={{ fontWeight: '700', color: '#333', marginRight: '6px' }}>{c.user_taste_profile?.nickname || '익명'}</span>
-              <span style={{ color: '#555' }}>{c.content}</span>
-              <span style={{ color: '#ccc', fontSize: '11px', marginLeft: '6px' }}>{new Date(c.created_at).toLocaleDateString('ko-KR')}</span>
-            </div>
-          ))}
-          {currentUserId ? (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-              <input
-                value={text} onChange={e => setText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && submit()}
-                placeholder="댓글을 입력하세요..."
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '20px', border: '1px solid #eee', fontSize: '13px', outline: 'none' }}
-              />
-              <button onClick={submit} style={{
-                padding: '8px 14px', borderRadius: '20px', border: 'none',
-                background: '#FF5A3D', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-              }}>전송</button>
-            </div>
-          ) : (
-            <p style={{ color: '#ccc', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>댓글을 쓰려면 로그인하세요</p>
+    <div style={{ borderTop: '1px solid #F0F0F0', marginTop: 10, paddingTop: 12 }}>
+      {comments.slice(0, 3).map((c) => (
+        <p
+          key={c.id}
+          style={{
+            fontSize: 13,
+            color: '#111',
+            marginBottom: 6,
+            lineHeight: 1.55,
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>{c.user?.nickname || '익명'}</span>{' '}
+          <span style={{ color: '#444' }}>{c.content}</span>
+        </p>
+      ))}
+      {comments.length > 3 && (
+        <p style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>
+          댓글 {comments.length}개 모두 보기
+        </p>
+      )}
+      {currentUserId && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            marginTop: 10,
+          }}
+        >
+          <Avatar name={currentUserId} size={24} />
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            placeholder="댓글 추가..."
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: 13,
+              color: '#111',
+              background: 'transparent',
+            }}
+          />
+          {input.trim() && (
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#111',
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              게시
+            </button>
           )}
         </div>
       )}
@@ -422,318 +481,973 @@ function CommentsSection({ reviewId, currentUserId }: { reviewId: string; curren
 }
 
 /* =========================================================
-   메인 MOTD 피드
+   PinterestCard — 단일 카드 (핀터레스트 스타일)
    ========================================================= */
-export default function MOTDPage() {
-  const router   = useRouter()
-  const supabase = createClient()
+function PinterestCard({
+  review,
+  currentUserId,
+  isLiked,
+  isSaved,
+  likeCount,
+  onLike,
+  onSave,
+  onTaste,
+  onProfileClick,
+}: {
+  review: Review
+  currentUserId: string | null
+  isLiked: boolean
+  isSaved: boolean
+  likeCount: number
+  onLike: () => void
+  onSave: () => void
+  onTaste: () => void
+  onProfileClick: () => void
+}) {
+  const [showComments, setShowComments] = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
+  const photos = parsePhotos(review.photos)
+  const tags = Array.isArray(review.tags) ? review.tags : []
+  const photo = photos[0] || null
+  const hasPhoto = !!photo
 
-  const [reviews,      setReviews]      = useState<Review[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [tab,          setTab]          = useState<'all' | 'following'>('all')
-  const [currentUser,  setCurrentUser]  = useState<string | null>(null)
-  const [followingIds, setFollowingIds] = useState<string[]>([])
-  const [tasteModal,   setTasteModal]   = useState<Review | null>(null)
-  const [profileModal, setProfileModal] = useState<string | null>(null)
+  return (
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 16,
+        overflow: 'hidden',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        breakInside: 'avoid',
+        marginBottom: 14,
+        display: 'inline-block',
+        width: '100%',
+      }}
+    >
+      {/* 사진 */}
+      {hasPhoto ? (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            background: '#F0F0F0',
+            overflow: 'hidden',
+          }}
+        >
+          <img
+            src={photo}
+            alt={review.menu_name}
+            onLoad={() => setImgLoaded(true)}
+            onError={(e) => {
+              ;(e.target as HTMLImageElement).style.display = 'none'
+            }}
+            style={{
+              width: '100%',
+              display: 'block',
+              objectFit: 'cover',
+              opacity: imgLoaded ? 1 : 0,
+              transition: 'opacity 0.3s',
+            }}
+          />
+          {/* 저장 버튼 오버레이 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onSave()
+            }}
+            style={{
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              background: isSaved ? '#111' : 'rgba(255,255,255,0.92)',
+              border: 'none',
+              borderRadius: 20,
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 700,
+              color: isSaved ? '#fff' : '#111',
+              cursor: 'pointer',
+              backdropFilter: 'blur(4px)',
+              letterSpacing: '-0.2px',
+            }}
+          >
+            {isSaved ? '저장됨' : '저장'}
+          </button>
+          {photos.length > 1 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                background: 'rgba(0,0,0,0.5)',
+                borderRadius: 20,
+                padding: '4px 10px',
+                fontSize: 11,
+                color: '#fff',
+                fontWeight: 600,
+              }}
+            >
+              +{photos.length - 1}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            width: '100%',
+            height: 120,
+            background: '#F7F7F7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <span style={{ fontSize: 32 }}>🍽️</span>
+        </div>
+      )}
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const uid = user?.id ?? null
-      setCurrentUser(uid)
+      {/* 본문 */}
+      <div style={{ padding: '12px 14px 14px' }}>
+        {/* 가게 & 메뉴 */}
+        <p
+          style={{
+            fontSize: 13,
+            fontWeight: 800,
+            color: '#111',
+            marginBottom: 3,
+            lineHeight: 1.3,
+            letterSpacing: '-0.3px',
+          }}
+        >
+          {review.store?.name || '가게 정보 없음'}
+        </p>
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 6, fontWeight: 500 }}>
+          {review.menu_name}
+          {review.total_rating > 0 && (
+            <span style={{ marginLeft: 6, color: '#111', fontWeight: 700 }}>
+              {'★'.repeat(Math.round(review.total_rating))}
+              <span style={{ fontWeight: 400, color: '#999', fontSize: 11 }}>
+                {' '}{review.total_rating.toFixed(1)}
+              </span>
+            </span>
+          )}
+        </p>
 
-      if (uid) {
-        const { data: fol } = await supabase.from('follows').select('following_id').eq('follower_id', uid)
-        setFollowingIds(fol?.map((f: any) => f.following_id) ?? [])
-      }
+        {/* 한줄 리뷰 */}
+        {review.one_line_review && (
+          <p
+            style={{
+              fontSize: 12,
+              color: '#444',
+              lineHeight: 1.55,
+              marginBottom: 8,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {review.one_line_review}
+          </p>
+        )}
 
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('*, stores(id,name,category,address), user_taste_profile(nickname,bio,taste_mbti)')
-        .order('created_at', { ascending: false })
-        .limit(50)
+        {/* 태그 */}
+        {tags.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 4,
+              marginBottom: 10,
+            }}
+          >
+            {tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                style={{
+                  fontSize: 11,
+                  color: '#555',
+                  background: '#F3F3F3',
+                  padding: '3px 8px',
+                  borderRadius: 20,
+                  fontWeight: 500,
+                }}
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
 
-      if (error) { console.error('리뷰 조회 오류:', error); setLoading(false); return }
+        {/* 하단 액션 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingTop: 10,
+            borderTop: '1px solid #F3F3F3',
+          }}
+        >
+          {/* 작성자 */}
+          <div
+            onClick={onProfileClick}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              cursor: 'pointer',
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            <Avatar name={review.user?.nickname} size={26} />
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#333',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {review.user?.nickname || '익명'}
+            </span>
+          </div>
 
-      /* stores / user_taste_profile 이 배열로 올 경우 단일 객체로 변환 */
-      const rawList = (data || []).map((r: any) => ({
-        ...r,
-        stores: Array.isArray(r.stores)
-          ? (r.stores[0] ?? null)
-          : (r.stores ?? null),
-        user_taste_profile: Array.isArray(r.user_taste_profile)
-          ? (r.user_taste_profile[0] ?? null)
-          : (r.user_taste_profile ?? null),
-      })) as Review[]
+          {/* 액션 아이콘 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              onClick={onLike}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '4px 6px',
+                borderRadius: 8,
+                color: isLiked ? '#111' : '#999',
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill={isLiked ? '#111' : 'none'}
+                stroke={isLiked ? '#111' : '#999'}
+                strokeWidth="2"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+              {likeCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 700 }}>{likeCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setShowComments((v) => !v)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px 6px',
+                borderRadius: 8,
+                color: '#999',
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#999"
+                strokeWidth="2"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+            <button
+              onClick={onTaste}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px 6px',
+                borderRadius: 8,
+                color: '#999',
+                fontSize: 15,
+                lineHeight: 1,
+              }}
+            >
+              ···
+            </button>
+          </div>
+        </div>
 
-      const reviewIds = rawList.map(r => r.id)
-      const storeIds  = rawList.map(r => r.store_id).filter(Boolean) as string[]
+        {/* 댓글 섹션 */}
+        {showComments && (
+          <CommentsSection reviewId={review.id} currentUserId={currentUserId} />
+        )}
+      </div>
+    </div>
+  )
+}
 
-      const [{ data: allLikes }, { data: myLikes }, { data: mySaves }] = await Promise.all([
-        supabase.from('review_likes').select('review_id').in('review_id', reviewIds),
-        uid ? supabase.from('review_likes').select('review_id').eq('user_id', uid).in('review_id', reviewIds) : { data: [] },
-        uid && storeIds.length ? supabase.from('saved_stores').select('store_id').eq('user_id', uid).in('store_id', storeIds) : { data: [] },
-      ])
+/* =========================================================
+   Masonry Grid — 핀터레스트 2열 폭포 레이아웃
+   ========================================================= */
+function MasonryGrid({
+  reviews,
+  currentUserId,
+  likedMap,
+  savedMap,
+  likeCountMap,
+  onLike,
+  onSave,
+  onTaste,
+  onProfileClick,
+}: {
+  reviews: Review[]
+  currentUserId: string | null
+  likedMap: Record<string, boolean>
+  savedMap: Record<string, boolean>
+  likeCountMap: Record<string, number>
+  onLike: (r: Review) => void
+  onSave: (r: Review) => void
+  onTaste: (r: Review) => void
+  onProfileClick: (r: Review) => void
+}) {
+  const left = reviews.filter((_, i) => i % 2 === 0)
+  const right = reviews.filter((_, i) => i % 2 === 1)
 
-      const likeCountMap = (allLikes || []).reduce<Record<string, number>>((acc, l: any) => {
-        acc[l.review_id] = (acc[l.review_id] || 0) + 1; return acc
-      }, {})
-      const myLikeSet = new Set((myLikes || []).map((l: any) => l.review_id))
-      const mySaveSet = new Set((mySaves || []).map((s: any) => s.store_id))
-
-      setReviews(rawList.map(r => ({
-        ...r,
-        like_count: likeCountMap[r.id] ?? 0,
-        is_liked:   myLikeSet.has(r.id),
-        is_saved:   r.store_id ? mySaveSet.has(r.store_id) : false,
-      })))
-      setLoading(false)
-    }
-    init()
-  }, [])
-
-  const toggleLike = async (e: React.MouseEvent, review: Review) => {
-    e.stopPropagation()
-    if (!currentUser) { router.push('/login'); return }
-    if (review.is_liked) {
-      await supabase.from('review_likes').delete().eq('review_id', review.id).eq('user_id', currentUser)
-    } else {
-      await supabase.from('review_likes').insert({ review_id: review.id, user_id: currentUser })
-    }
-    setReviews(rs => rs.map(r => r.id === review.id
-      ? { ...r, is_liked: !r.is_liked, like_count: r.like_count + (r.is_liked ? -1 : 1) }
-      : r
-    ))
-  }
-
-  const toggleSave = async (e: React.MouseEvent, review: Review) => {
-    e.stopPropagation()
-    if (!currentUser) { router.push('/login'); return }
-    if (!review.store_id) return
-    if (review.is_saved) {
-      await supabase.from('saved_stores').delete().eq('store_id', review.store_id).eq('user_id', currentUser)
-    } else {
-      await supabase.from('saved_stores').insert({ store_id: review.store_id, user_id: currentUser })
-    }
-    setReviews(rs => rs.map(r => r.id === review.id ? { ...r, is_saved: !r.is_saved } : r))
-  }
-
-  const filtered = tab === 'following'
-    ? reviews.filter(r => followingIds.includes(r.user_id))
-    : reviews
-
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ fontSize: '40px' }}>🍽️</div>
-      <p style={{ color: '#999', fontSize: '14px' }}>MOTD 불러오는 중...</p>
+  const renderCol = (col: Review[]) => (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {col.map((r) => (
+        <PinterestCard
+          key={r.id}
+          review={r}
+          currentUserId={currentUserId}
+          isLiked={likedMap[r.id] ?? false}
+          isSaved={savedMap[r.id] ?? false}
+          likeCount={likeCountMap[r.id] ?? 0}
+          onLike={() => onLike(r)}
+          onSave={() => onSave(r)}
+          onTaste={() => onTaste(r)}
+          onProfileClick={() => onProfileClick(r)}
+        />
+      ))}
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', paddingBottom: '80px' }}>
+    <div style={{ display: 'flex', gap: 10, padding: '14px 12px', alignItems: 'flex-start' }}>
+      {renderCol(left)}
+      {renderCol(right)}
+    </div>
+  )
+}
 
-      {/* 헤더 */}
-      <div style={{
-        background: 'white', padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
-        position: 'sticky', top: 0, zIndex: 100,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-      }}>
-        <h1 onClick={() => router.push('/map')}
-          style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#FF5A3D', cursor: 'pointer' }}>
-          🍜 MOTD
-        </h1>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', color: '#bbb' }}>{filtered.length}개</span>
-          <button onClick={() => router.push('/review/write')} style={{
-            background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)', color: 'white',
-            border: 'none', borderRadius: '20px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-          }}>+ 리뷰</button>
-        </div>
+/* =========================================================
+   메인 FeedPage
+   ========================================================= */
+export default function FeedPage() {
+  const router = useRouter()
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'all' | 'following'>('all')
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
+  const [likedMap, setLikedMap] = useState<Record<string, boolean>>({})
+  const [savedMap, setSavedMap] = useState<Record<string, boolean>>({})
+  const [likeCountMap, setLikeCountMap] = useState<Record<string, number>>({})
+  const [tasteModal, setTasteModal] = useState<Review | null>(null)
+  const [profileModal, setProfileModal] = useState<MiniProfile | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  /* ─── 데이터 로드 ─── */
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const uid = user?.id ?? null
+      setCurrentUser(uid)
+
+      const [reviewsRes, followsRes, likesRes, savesRes] = await Promise.all([
+        supabase
+          .from('reviews')
+          .select(
+            '*, store:stores(id,name,category,address), user:user_profiles(nickname,bio,taste_mbti)'
+          )
+          .order('created_at', { ascending: false })
+          .limit(60),
+        uid
+          ? supabase.from('follows').select('following_id').eq('follower_id', uid)
+          : Promise.resolve({ data: [] as { following_id: string }[] }),
+        uid
+          ? supabase.from('likes').select('review_id').eq('user_id', uid)
+          : Promise.resolve({ data: [] as { review_id: string }[] }),
+        uid
+          ? supabase.from('saved_stores').select('store_id').eq('user_id', uid)
+          : Promise.resolve({ data: [] as { store_id: string }[] }),
+      ])
+
+      const allReviews: Review[] = (reviewsRes.data || []) as Review[]
+      const followIds = new Set(
+        (followsRes.data || []).map((f) => (f as { following_id: string }).following_id)
+      )
+      const likedIds = new Set(
+        (likesRes.data || []).map((l) => (l as { review_id: string }).review_id)
+      )
+      const savedIds = new Set(
+        (savesRes.data || []).map((s) => (s as { store_id: string }).store_id)
+      )
+
+      setReviews(allReviews)
+      setFollowingIds(followIds)
+
+      const lm: Record<string, boolean> = {}
+      const sm: Record<string, boolean> = {}
+      const lcm: Record<string, number> = {}
+      for (const r of allReviews) {
+        lm[r.id] = likedIds.has(r.id)
+        sm[r.id] = savedIds.has(r.store_id)
+        lcm[r.id] = 0
+      }
+      setLikedMap(lm)
+      setSavedMap(sm)
+      setLikeCountMap(lcm)
+
+      await Promise.all(
+        allReviews.map(async (r) => {
+          const { count } = await supabase
+            .from('likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('review_id', r.id)
+          setLikeCountMap((prev) => ({ ...prev, [r.id]: count || 0 }))
+        })
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  /* ─── 검색창 토글 ─── */
+  useEffect(() => {
+    if (showSearch && searchRef.current) searchRef.current.focus()
+  }, [showSearch])
+
+  /* ─── 좋아요 ─── */
+  const handleLike = useCallback(
+    async (review: Review) => {
+      if (!currentUser) { router.push('/login'); return }
+      const isLiked = likedMap[review.id]
+      setLikedMap((prev) => ({ ...prev, [review.id]: !isLiked }))
+      setLikeCountMap((prev) => ({
+        ...prev,
+        [review.id]: (prev[review.id] || 0) + (isLiked ? -1 : 1),
+      }))
+      if (isLiked) {
+        await supabase.from('likes').delete().eq('user_id', currentUser).eq('review_id', review.id)
+      } else {
+        await supabase.from('likes').insert({ user_id: currentUser, review_id: review.id })
+      }
+    },
+    [currentUser, likedMap, router]
+  )
+
+  /* ─── 저장 ─── */
+  const handleSave = useCallback(
+    async (review: Review) => {
+      if (!currentUser) { router.push('/login'); return }
+      const isSaved = savedMap[review.id]
+      setSavedMap((prev) => ({ ...prev, [review.id]: !isSaved }))
+      if (isSaved) {
+        await supabase
+          .from('saved_stores')
+          .delete()
+          .eq('user_id', currentUser)
+          .eq('store_id', review.store_id)
+      } else {
+        await supabase
+          .from('saved_stores')
+          .insert({ user_id: currentUser, store_id: review.store_id })
+      }
+    },
+    [currentUser, savedMap]
+  )
+
+  /* ─── 팔로우 ─── */
+  const handleFollow = useCallback(
+    async (userId: string, isFollowing: boolean) => {
+      if (!currentUser) return
+      if (isFollowing) {
+        await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', currentUser)
+          .eq('following_id', userId)
+        setFollowingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(userId)
+          return next
+        })
+      } else {
+        await supabase
+          .from('follows')
+          .insert({ follower_id: currentUser, following_id: userId })
+        setFollowingIds((prev) => new Set([...prev, userId]))
+      }
+      setProfileModal((prev) => (prev ? { ...prev, isFollowing: !isFollowing } : null))
+    },
+    [currentUser]
+  )
+
+  /* ─── 프로필 모달 ─── */
+  const openProfileModal = useCallback(
+    async (review: Review) => {
+      const { count } = await supabase
+        .from('reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', review.user_id)
+      setProfileModal({
+        userId: review.user_id,
+        nickname: review.user?.nickname || '익명',
+        bio: review.user?.bio,
+        taste_mbti: review.user?.taste_mbti,
+        reviewCount: count || 0,
+        isFollowing: followingIds.has(review.user_id),
+      })
+    },
+    [followingIds]
+  )
+
+  /* ─── 필터링 ─── */
+  const filteredReviews = reviews
+    .filter((r) => (tab === 'following' ? followingIds.has(r.user_id) : true))
+    .filter((r) => {
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      return (
+        r.store?.name?.toLowerCase().includes(q) ||
+        r.menu_name?.toLowerCase().includes(q) ||
+        r.one_line_review?.toLowerCase().includes(q) ||
+        r.store?.address?.toLowerCase().includes(q)
+      )
+    })
+
+  /* ─── 네비게이션 ─── */
+  const navItems: {
+    icon: React.ReactNode
+    label: string
+    path: string
+    active: boolean
+  }[] = [
+    {
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#111" stroke="none">
+          <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+        </svg>
+      ),
+      label: '홈',
+      path: '/feed',
+      active: true,
+    },
+    {
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
+      ),
+      label: '탐색',
+      path: '/map',
+      active: false,
+    },
+    {
+      icon: null,
+      label: '리뷰',
+      path: '/review/write',
+      active: false,
+    },
+    {
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+        </svg>
+      ),
+      label: '저장',
+      path: '/saved',
+      active: false,
+    },
+    {
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+      label: '프로필',
+      path: '/profile',
+      active: false,
+    },
+  ]
+
+  /* ─── 로딩 ─── */
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          background: '#fff',
+          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+        }}
+      >
+        <button
+          onClick={() => router.push('/feed')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: 32 }}
+        >
+          <img src="/yum2.png" alt="YumMap" style={{ height: 30, objectFit: 'contain' }} />
+        </button>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            border: '2.5px solid #F0F0F0',
+            borderTop: '2.5px solid #111',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
+    )
+  }
 
-      {/* 탭 */}
-      <div style={{
-        background: 'white', display: 'flex', padding: '0 16px',
-        borderBottom: '1px solid #f0f0f0', position: 'sticky', top: '57px', zIndex: 99
-      }}>
-        {(['all', 'following'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, padding: '12px 0', border: 'none', background: 'none',
-            fontSize: '13px', fontWeight: tab === t ? '700' : '400',
-            color: tab === t ? '#FF5A3D' : '#aaa',
-            borderBottom: tab === t ? '2px solid #FF5A3D' : '2px solid transparent',
-            cursor: 'pointer'
-          }}>{t === 'all' ? '전체' : '팔로잉'}</button>
+  /* ─── 렌더 ─── */
+  return (
+    <div
+      style={{
+        background: '#fff',
+        minHeight: '100vh',
+        maxWidth: 480,
+        margin: '0 auto',
+        fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+        position: 'relative',
+      }}
+    >
+      <style>{`
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        *::-webkit-scrollbar { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+
+      {/* ══ 헤더 ══ */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 200,
+          background: '#fff',
+          borderBottom: '1px solid #F0F0F0',
+          height: 54,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 14px',
+          gap: 10,
+        }}
+      >
+        {/* 로고 — yum2.png 고정, 클릭 시 /feed */}
+        <button
+          onClick={() => router.push('/feed')}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            flexShrink: 0,
+          }}
+          aria-label="YumMap 홈"
+        >
+          <img
+            src="/yum2.png"
+            alt="YumMap"
+            style={{ height: 28, objectFit: 'contain', display: 'block' }}
+          />
+        </button>
+
+        {/* 검색 입력 — 핀터레스트식 pill 형태 */}
+        <div
+          style={{
+            flex: 1,
+            height: 36,
+            background: '#F3F3F3',
+            borderRadius: 20,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 14px',
+            gap: 8,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2.5">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={searchRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="가게나 메뉴 검색"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: 13,
+              color: '#111',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#999',
+                fontSize: 16,
+                lineHeight: 1,
+                padding: 0,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {/* 리뷰 작성 */}
+        <button
+          onClick={() => router.push('/review/write')}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 4,
+            flexShrink: 0,
+          }}
+          aria-label="리뷰 작성"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2.2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+      </header>
+
+      {/* ══ 탭 ══ */}
+      <div
+        style={{
+          background: '#fff',
+          display: 'flex',
+          padding: '10px 14px 0',
+          gap: 6,
+          borderBottom: '1px solid #F0F0F0',
+        }}
+      >
+        {(['all', 'following'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '8px 4px',
+              fontSize: 14,
+              fontWeight: tab === t ? 800 : 500,
+              color: tab === t ? '#111' : '#999',
+              borderBottom: tab === t ? '2px solid #111' : '2px solid transparent',
+              marginBottom: -1,
+              letterSpacing: '-0.3px',
+              transition: 'all 0.15s',
+            }}
+          >
+            {t === 'all' ? '전체' : '팔로잉'}
+          </button>
         ))}
       </div>
 
-      {/* 카드 목록 */}
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-          <div style={{ fontSize: '60px', marginBottom: '16px' }}>🍽️</div>
-          <p style={{ color: '#999', fontSize: '16px' }}>
-            {tab === 'following' ? '팔로잉한 사람의 리뷰가 없어요' : '아직 리뷰가 없어요'}
-          </p>
-        </div>
-      ) : (
-        <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filtered.map(review => {
-            const photos = parsePhotos(review.photos)
-            const total  = Math.round(
-              ((review.taste_score ?? 5) + (review.portion_score ?? 5) + (review.value_score ?? 5) +
-               (review.spiciness ?? 5) + (review.saltiness ?? 5) + (review.sweetness ?? 5)) / 6 * 10
-            ) / 10
+      {/* ══ 메이슨리 피드 ══ */}
+      <main style={{ paddingBottom: 80, background: '#FAFAFA' }}>
+        {filteredReviews.length === 0 ? (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '80px 24px',
+              color: '#999',
+            }}
+          >
+            <p style={{ fontSize: 40, marginBottom: 16 }}>
+              {searchQuery ? '🔍' : tab === 'following' ? '👥' : '🍽️'}
+            </p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 8 }}>
+              {searchQuery
+                ? `"${searchQuery}" 검색 결과 없음`
+                : tab === 'following'
+                ? '팔로잉 리뷰가 없어요'
+                : '아직 리뷰가 없어요'}
+            </p>
+            <p style={{ fontSize: 13, lineHeight: 1.65 }}>
+              {searchQuery
+                ? '다른 키워드로 검색해보세요'
+                : tab === 'following'
+                ? '친구를 팔로우하고 맛집을 공유해보세요!'
+                : '첫 번째 맛집 리뷰를 남겨보세요!'}
+            </p>
+            {!searchQuery && (
+              <button
+                onClick={() => router.push('/review/write')}
+                style={{
+                  marginTop: 24,
+                  padding: '13px 32px',
+                  background: '#111',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 28,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  letterSpacing: '-0.2px',
+                }}
+              >
+                리뷰 작성하기
+              </button>
+            )}
+          </div>
+        ) : (
+          <MasonryGrid
+            reviews={filteredReviews}
+            currentUserId={currentUser}
+            likedMap={likedMap}
+            savedMap={savedMap}
+            likeCountMap={likeCountMap}
+            onLike={handleLike}
+            onSave={handleSave}
+            onTaste={setTasteModal}
+            onProfileClick={openProfileModal}
+          />
+        )}
+      </main>
 
-            return (
-              <div key={review.id} onClick={() => setTasteModal(review)} style={{
-                background: 'white', borderRadius: '20px', overflow: 'hidden',
-                cursor: 'pointer', boxShadow: '0 2px 16px rgba(0,0,0,0.08)'
-              }}>
-                {/* 사진 or 컬러 헤더 */}
-                {photos.length > 0 ? (
-                  <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', overflow: 'hidden', background: '#f0f0f0' }}>
-                    <img src={photos[0]} alt="리뷰 사진"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                    {photos.length > 1 && (
-                      <div style={{
-                        position: 'absolute', top: '10px', right: '10px',
-                        background: 'rgba(0,0,0,0.6)', color: 'white',
-                        borderRadius: '12px', padding: '3px 8px', fontSize: '11px', fontWeight: '700'
-                      }}>+{photos.length - 1}</div>
-                    )}
-                    <div style={{
-                      position: 'absolute', bottom: '10px', right: '10px',
-                      background: 'rgba(255,90,61,0.9)', color: 'white',
-                      borderRadius: '12px', padding: '4px 10px', fontSize: '13px', fontWeight: '800'
-                    }}>⭐ {total}</div>
-                    <div style={{
-                      position: 'absolute', bottom: 0, left: 0, right: 0,
-                      background: 'linear-gradient(transparent,rgba(0,0,0,0.7))',
-                      padding: '20px 16px 12px'
-                    }}>
-                      <p style={{ margin: 0, color: 'white', fontWeight: '700', fontSize: '16px' }}>
-                        {review.stores?.name || '가게 이름 없음'}
-                      </p>
-                      <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: '12px' }}>
-                        {review.stores?.category}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-                    padding: '20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                  }}>
-                    <div>
-                      <p style={{ margin: 0, color: 'white', fontWeight: '700', fontSize: '16px' }}>
-                        {review.stores?.name || '가게 이름 없음'}
-                      </p>
-                      <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: '12px' }}>
-                        {review.stores?.category}
-                      </p>
-                    </div>
-                    <div style={{
-                      background: 'rgba(255,255,255,0.2)', borderRadius: '12px',
-                      padding: '6px 12px', color: 'white', fontWeight: '800', fontSize: '16px'
-                    }}>⭐ {total}</div>
-                  </div>
-                )}
-
-                {/* 본문 */}
-                <div style={{ padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '50%',
-                        background: 'linear-gradient(135deg,#FF5A3D,#FF8C42)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: 'white', fontSize: '13px', fontWeight: '700'
-                      }}>{(review.user_taste_profile?.nickname || '익')[0]}</div>
-                      <div>
-                        <button
-                          onClick={e => { e.stopPropagation(); setProfileModal(review.user_id) }}
-                          style={{ border: 'none', background: 'none', padding: 0, fontSize: '13px', fontWeight: '700', color: '#333', cursor: 'pointer' }}
-                        >{review.user_taste_profile?.nickname || '익명'}</button>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#aaa' }}>
-                          {new Date(review.created_at).toLocaleDateString('ko-KR')}
-                        </p>
-                      </div>
-                    </div>
-                    <FollowButton targetId={review.user_id} currentUserId={currentUser} />
-                  </div>
-
-                  {review.menu_name && (
-                    <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#555', background: '#fff5f3', borderRadius: '8px', padding: '6px 10px' }}>
-                      🍴 {review.menu_name}
-                    </p>
-                  )}
-                  {review.one_line_review && (
-                    <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#444', fontStyle: 'italic', lineHeight: '1.5' }}>
-                      "{review.one_line_review}"
-                    </p>
-                  )}
-
-                  {((review.texture_tags?.length ?? 0) + (review.situation_tags?.length ?? 0)) > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                      {review.texture_tags?.map(t => (
-                        <span key={t} style={{ background: '#fff3f0', color: '#FF5A3D', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-                      ))}
-                      {review.situation_tags?.map(t => (
-                        <span key={t} style={{ background: '#f0f7ff', color: '#2196F3', borderRadius: '20px', padding: '3px 10px', fontSize: '11px', fontWeight: '600' }}>{t}</span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #f5f5f5' }}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <button onClick={e => toggleLike(e, review)} style={{
-                        border: 'none', background: 'none', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        fontSize: '13px', color: review.is_liked ? '#FF5A3D' : '#aaa', fontWeight: '600'
-                      }}>{review.is_liked ? '❤️' : '🤍'} {review.like_count}</button>
-                      <button onClick={e => toggleSave(e, review)} style={{
-                        border: 'none', background: 'none', cursor: 'pointer',
-                        fontSize: '13px', color: review.is_saved ? '#FF9800' : '#aaa', fontWeight: '600'
-                      }}>{review.is_saved ? '🔖' : '📌'} {review.is_saved ? '저장됨' : '저장'}</button>
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#ccc' }}>탭 → 맛 분석 👆</span>
-                  </div>
-
-                  <CommentsSection reviewId={review.id} currentUserId={currentUser} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 하단 네비 */}
-      <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'white', borderTop: '1px solid #f0f0f0',
-        display: 'flex', padding: '8px 0 calc(8px + env(safe-area-inset-bottom))', zIndex: 100
-      }}>
-        {[
-          { icon: '🗺️', label: '지도',   path: '/map' },
-          { icon: '🍜', label: 'MOTD',   path: '/feed' },
-          { icon: '✍️', label: '리뷰',   path: '/review/write' },
-          { icon: '🔖', label: '저장',   path: '/saved' },
-          { icon: '👤', label: '프로필', path: '/profile' },
-        ].map(item => (
-          <button key={item.path} onClick={() => router.push(item.path)} style={{
-            flex: 1, border: 'none', background: 'transparent',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-            cursor: 'pointer', padding: '4px 0'
-          }}>
-            <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '10px', color: item.path === '/feed' ? '#FF5A3D' : '#999' }}>{item.label}</span>
-          </button>
+      {/* ══ 하단 네비게이션 ══ */}
+      <nav
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '100%',
+          maxWidth: 480,
+          background: '#fff',
+          borderTop: '1px solid #F0F0F0',
+          display: 'flex',
+          alignItems: 'center',
+          height: 60,
+          zIndex: 200,
+        }}
+      >
+        {navItems.map((item) => (
+          <div
+            key={item.path}
+            style={{
+              flex: 1,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            {item.icon === null ? (
+              /* 가운데 + 추가 버튼 — 핀터레스트식 둥근 사각형 */
+              <button
+                onClick={() => router.push('/review/write')}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  background: '#111',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+                aria-label="리뷰 작성"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push(item.path)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '6px 0',
+                  minWidth: 44,
+                }}
+                aria-label={item.label}
+              >
+                {item.icon}
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: item.active ? '#111' : '#999',
+                    fontWeight: item.active ? 700 : 400,
+                    letterSpacing: '-0.2px',
+                  }}
+                >
+                  {item.label}
+                </span>
+              </button>
+            )}
+          </div>
         ))}
       </nav>
 
-      {tasteModal   && <TasteModal   review={tasteModal}   onClose={() => setTasteModal(null)} />}
-      {profileModal && <ProfileModal userId={profileModal} onClose={() => setProfileModal(null)} />}
+      {/* ══ 모달 ══ */}
+      {tasteModal && (
+        <TasteModal review={tasteModal} onClose={() => setTasteModal(null)} />
+      )}
+      {profileModal && (
+        <ProfileModal
+          profile={profileModal}
+          onClose={() => setProfileModal(null)}
+          onFollow={handleFollow}
+          currentUserId={currentUser}
+        />
+      )}
     </div>
   )
 }
