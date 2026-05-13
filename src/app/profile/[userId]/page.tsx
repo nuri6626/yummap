@@ -4,9 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-/* =========================================================
-   타입 정의
-   ========================================================= */
 interface StoreInfo {
   id: string
   name: string
@@ -20,7 +17,7 @@ interface Review {
   menu_name: string | null
   one_line_review: string | null
   content: string | null
-  total_rating: number | null
+  star_score: number | null  // ✅ total_rating → star_score
   photos: string | string[] | null
   tags: string[] | null
   store_id: string
@@ -40,9 +37,6 @@ interface UserProfile {
   taste_rich: number | null
 }
 
-/* =========================================================
-   유틸리티
-   ========================================================= */
 const supabase = createClient()
 
 function parsePhotos(p: string | string[] | null): string[] {
@@ -68,9 +62,6 @@ function getAvatarBg(name?: string | null): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-/* =========================================================
-   Avatar
-   ========================================================= */
 function Avatar({ name, size = 64 }: { name?: string | null; size?: number }) {
   return (
     <div
@@ -94,9 +85,6 @@ function Avatar({ name, size = 64 }: { name?: string | null; size?: number }) {
   )
 }
 
-/* =========================================================
-   TasteBar — 흑백
-   ========================================================= */
 function TasteBar({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -122,9 +110,6 @@ function TasteBar({ label, value }: { label: string; value: number }) {
   )
 }
 
-/* =========================================================
-   ReviewCard — 핀터레스트 스타일
-   ========================================================= */
 function ReviewCard({
   review,
   expanded,
@@ -151,7 +136,6 @@ function ReviewCard({
         width: '100%',
       }}
     >
-      {/* 사진 */}
       {photo ? (
         <div style={{ position: 'relative', width: '100%', background: '#F0F0F0', overflow: 'hidden' }}>
           <img
@@ -193,17 +177,8 @@ function ReviewCard({
         </div>
       )}
 
-      {/* 본문 */}
       <div style={{ padding: '12px 14px 14px' }}>
-        {/* 가게명 + 날짜 */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: 4,
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <p
             style={{
               fontSize: 13,
@@ -222,7 +197,6 @@ function ReviewCard({
           </span>
         </div>
 
-        {/* 카테고리 칩 */}
         {review.stores?.category && (
           <span
             style={{
@@ -240,22 +214,21 @@ function ReviewCard({
           </span>
         )}
 
-        {/* 메뉴 + 별점 */}
+        {/* ✅ total_rating → star_score */}
         {review.menu_name && (
           <p style={{ fontSize: 12, color: '#666', marginBottom: 5, fontWeight: 500 }}>
             {review.menu_name}
-            {review.total_rating != null && (
+            {review.star_score != null && (
               <span style={{ marginLeft: 6, color: '#111', fontWeight: 800 }}>
-                {'★'.repeat(Math.round(review.total_rating))}
+                {'★'.repeat(Math.round(review.star_score))}
                 <span style={{ fontWeight: 400, color: '#999', fontSize: 10 }}>
-                  {' '}{review.total_rating.toFixed(1)}
+                  {' '}{review.star_score.toFixed(1)}
                 </span>
               </span>
             )}
           </p>
         )}
 
-        {/* 한줄 리뷰 */}
         {review.one_line_review && (
           <p
             style={{
@@ -273,7 +246,6 @@ function ReviewCard({
           </p>
         )}
 
-        {/* 상세 내용 */}
         {expanded && review.content && (
           <p
             style={{
@@ -289,7 +261,6 @@ function ReviewCard({
           </p>
         )}
 
-        {/* 태그 */}
         {expanded && tags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
             {tags.map((tag) => (
@@ -310,7 +281,6 @@ function ReviewCard({
           </div>
         )}
 
-        {/* 더보기 */}
         {(review.content || tags.length > 0) && (
           <button
             onClick={onToggle}
@@ -333,9 +303,6 @@ function ReviewCard({
   )
 }
 
-/* =========================================================
-   메인 UserProfilePage
-   ========================================================= */
 export default function UserProfilePage() {
   const router = useRouter()
   const params = useParams()
@@ -366,9 +333,8 @@ export default function UserProfilePage() {
         supabase.from('user_taste_profile').select('*').eq('user_id', userId).maybeSingle(),
         supabase
           .from('reviews')
-          .select(
-            'id, created_at, menu_name, one_line_review, content, total_rating, photos, tags, store_id, stores(id, name, category, address)'
-          )
+          // ✅ total_rating → star_score
+          .select('id, created_at, menu_name, one_line_review, content, star_score, photos, tags, store_id, stores(id, name, category, address)')
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(30),
@@ -411,17 +377,11 @@ export default function UserProfilePage() {
     setFollowLoading(true)
     try {
       if (isFollowing) {
-        await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', userId)
+        await supabase.from('follows').delete().eq('follower_id', currentUserId).eq('following_id', userId)
         setIsFollowing(false)
         setFollowerCount((c) => Math.max(0, c - 1))
       } else {
-        await supabase
-          .from('follows')
-          .insert({ follower_id: currentUserId, following_id: userId })
+        await supabase.from('follows').insert({ follower_id: currentUserId, following_id: userId })
         setIsFollowing(true)
         setFollowerCount((c) => c + 1)
       }
@@ -432,11 +392,9 @@ export default function UserProfilePage() {
     }
   }
 
-  /* ─── 메이슨리 2열 분배 ─── */
   const leftCol = reviews.filter((_, i) => i % 2 === 0)
   const rightCol = reviews.filter((_, i) => i % 2 === 1)
 
-  /* ─── 네비게이션 아이템 ─── */
   const navItems: { icon: React.ReactNode; label: string; path: string; active: boolean }[] = [
     {
       icon: (
@@ -444,9 +402,7 @@ export default function UserProfilePage() {
           <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
         </svg>
       ),
-      label: '홈',
-      path: '/feed',
-      active: false,
+      label: '홈', path: '/feed', active: false,
     },
     {
       icon: (
@@ -455,9 +411,7 @@ export default function UserProfilePage() {
           <path d="M21 21l-4.35-4.35" />
         </svg>
       ),
-      label: '탐색',
-      path: '/map',
-      active: false,
+      label: '탐색', path: '/map', active: false,
     },
     { icon: null, label: '리뷰', path: '/review/write', active: false },
     {
@@ -466,9 +420,7 @@ export default function UserProfilePage() {
           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
         </svg>
       ),
-      label: '저장',
-      path: '/saved',
-      active: false,
+      label: '저장', path: '/saved', active: false,
     },
     {
       icon: (
@@ -477,78 +429,31 @@ export default function UserProfilePage() {
           <circle cx="12" cy="7" r="4" />
         </svg>
       ),
-      label: '프로필',
-      path: '/profile',
-      active: true,
+      label: '프로필', path: '/profile', active: true,
     },
   ]
 
-  /* ─── 로딩 ─── */
   if (loading) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: '#fff',
-          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-        }}
-      >
-        <button
-          onClick={() => router.push('/feed')}
-          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: 32 }}
-        >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fff' }}>
+        <button onClick={() => router.push('/feed')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginBottom: 32 }}>
           <img src="/yum2.png" alt="YumMap" style={{ height: 28, objectFit: 'contain' }} />
         </button>
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            border: '2.5px solid #F0F0F0',
-            borderTop: '2.5px solid #111',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }}
-        />
+        <div style={{ width: 32, height: 32, border: '2.5px solid #F0F0F0', borderTop: '2.5px solid #111', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }
 
-  /* ─── 프로필 없음 ─── */
   if (!profile) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: '#fff',
-          fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-          gap: 12,
-        }}
-      >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#fff', gap: 12 }}>
         <p style={{ fontSize: 48 }}>😕</p>
         <p style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>프로필을 찾을 수 없어요</p>
         <p style={{ fontSize: 13, color: '#999' }}>존재하지 않는 사용자예요</p>
         <button
           onClick={() => router.back()}
-          style={{
-            marginTop: 8,
-            padding: '12px 28px',
-            background: '#111',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 28,
-            fontWeight: 700,
-            fontSize: 14,
-            cursor: 'pointer',
-          }}
+          style={{ marginTop: 8, padding: '12px 28px', background: '#111', color: '#fff', border: 'none', borderRadius: 28, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
         >
           돌아가기
         </button>
@@ -558,7 +463,6 @@ export default function UserProfilePage() {
 
   const isSelf = currentUserId === userId
 
-  /* ─── 렌더 ─── */
   return (
     <div
       style={{
@@ -576,64 +480,32 @@ export default function UserProfilePage() {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* ══ 헤더 ══ */}
+      {/* 헤더 */}
       <header
         style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 200,
-          background: '#fff',
-          borderBottom: '1px solid #F0F0F0',
-          height: 54,
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 14px',
-          gap: 10,
+          position: 'sticky', top: 0, zIndex: 200, background: '#fff',
+          borderBottom: '1px solid #F0F0F0', height: 54,
+          display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10,
         }}
       >
-        {/* 뒤로가기 */}
         <button
           onClick={() => router.back()}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-          aria-label="뒤로가기"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2.2">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
 
-        {/* 로고 — yum2.png 고정, 클릭 시 /feed */}
         <button
           onClick={() => router.push('/feed')}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-          aria-label="YumMap 홈"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
         >
-          <img
-            src="/yum2.png"
-            alt="YumMap"
-            style={{ height: 28, objectFit: 'contain', display: 'block' }}
-          />
+          <img src="/yum2.png" alt="YumMap" style={{ height: 28, objectFit: 'contain', display: 'block' }} />
         </button>
 
         <div style={{ flex: 1 }} />
 
-        {/* 팔로우 버튼 (헤더 우측) */}
         {!isSelf && currentUserId && (
           <button
             onClick={toggleFollow}
@@ -643,67 +515,34 @@ export default function UserProfilePage() {
               background: isFollowing ? '#fff' : '#111',
               color: isFollowing ? '#111' : '#fff',
               border: `1.5px solid ${isFollowing ? '#E0E0E0' : '#111'}`,
-              borderRadius: 9,
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: 'pointer',
-              opacity: followLoading ? 0.6 : 1,
-              letterSpacing: '-0.2px',
-              transition: 'all 0.2s',
+              borderRadius: 9, fontWeight: 700, fontSize: 13,
+              cursor: 'pointer', opacity: followLoading ? 0.6 : 1,
             }}
           >
             {followLoading ? '...' : isFollowing ? '팔로잉' : '팔로우'}
           </button>
         )}
 
-        {/* 본인 프로필이면 편집 이동 */}
         {isSelf && (
           <button
             onClick={() => router.push('/profile')}
-            style={{
-              background: 'none',
-              border: '1.5px solid #E0E0E0',
-              borderRadius: 9,
-              padding: '7px 14px',
-              fontSize: 13,
-              fontWeight: 700,
-              color: '#111',
-              cursor: 'pointer',
-            }}
+            style={{ background: 'none', border: '1.5px solid #E0E0E0', borderRadius: 9, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: '#111', cursor: 'pointer' }}
           >
             편집
           </button>
         )}
       </header>
 
-      {/* ══ 프로필 영역 ══ */}
+      {/* 프로필 영역 */}
       <div style={{ padding: '28px 20px 24px', borderBottom: '1px solid #F0F0F0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 18 }}>
           <Avatar name={profile.nickname} size={72} />
           <div style={{ flex: 1 }}>
-            <p
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: '#111',
-                letterSpacing: '-0.5px',
-                marginBottom: 5,
-              }}
-            >
+            <p style={{ fontSize: 20, fontWeight: 800, color: '#111', letterSpacing: '-0.5px', marginBottom: 5 }}>
               {profile.nickname || '닉네임 없음'}
             </p>
             {profile.taste_mbti && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  fontSize: 11,
-                  color: '#555',
-                  background: '#F3F3F3',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 600,
-                }}
-              >
+              <span style={{ display: 'inline-block', fontSize: 11, color: '#555', background: '#F3F3F3', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>
                 {profile.taste_mbti}
               </span>
             )}
@@ -711,65 +550,27 @@ export default function UserProfilePage() {
         </div>
 
         {profile.bio && (
-          <p
-            style={{
-              fontSize: 13,
-              color: '#555',
-              lineHeight: 1.65,
-              marginBottom: 18,
-            }}
-          >
+          <p style={{ fontSize: 13, color: '#555', lineHeight: 1.65, marginBottom: 18 }}>
             {profile.bio}
           </p>
         )}
 
-        {/* 통계 */}
-        <div
-          style={{
-            display: 'flex',
-            borderTop: '1px solid #F0F0F0',
-            paddingTop: 18,
-          }}
-        >
+        <div style={{ display: 'flex', borderTop: '1px solid #F0F0F0', paddingTop: 18 }}>
           {[
             { label: '리뷰', value: reviews.length },
             { label: '팔로워', value: followerCount },
             { label: '팔로잉', value: followingCount },
           ].map((s, i) => (
-            <div
-              key={s.label}
-              style={{
-                flex: 1,
-                textAlign: 'center',
-                borderRight: i < 2 ? '1px solid #F0F0F0' : 'none',
-              }}
-            >
-              <p
-                style={{
-                  fontSize: 22,
-                  fontWeight: 800,
-                  color: '#111',
-                  letterSpacing: '-0.5px',
-                }}
-              >
-                {s.value}
-              </p>
-              <p style={{ fontSize: 11, color: '#999', marginTop: 2, fontWeight: 500 }}>
-                {s.label}
-              </p>
+            <div key={s.label} style={{ flex: 1, textAlign: 'center', borderRight: i < 2 ? '1px solid #F0F0F0' : 'none' }}>
+              <p style={{ fontSize: 22, fontWeight: 800, color: '#111', letterSpacing: '-0.5px' }}>{s.value}</p>
+              <p style={{ fontSize: 11, color: '#999', marginTop: 2, fontWeight: 500 }}>{s.label}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ══ 탭 ══ */}
-      <div
-        style={{
-          display: 'flex',
-          borderBottom: '1px solid #F0F0F0',
-          background: '#fff',
-        }}
-      >
+      {/* 탭 */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #F0F0F0', background: '#fff' }}>
         {([
           { key: 'reviews', label: `리뷰 ${reviews.length}` },
           { key: 'taste', label: '맛 성향' },
@@ -778,17 +579,11 @@ export default function UserProfilePage() {
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             style={{
-              flex: 1,
-              background: 'none',
-              border: 'none',
-              padding: '14px 0',
-              fontSize: 13,
-              fontWeight: activeTab === t.key ? 800 : 500,
+              flex: 1, background: 'none', border: 'none', padding: '14px 0',
+              fontSize: 13, fontWeight: activeTab === t.key ? 800 : 500,
               color: activeTab === t.key ? '#111' : '#999',
               borderBottom: activeTab === t.key ? '2px solid #111' : '2px solid transparent',
               cursor: 'pointer',
-              letterSpacing: '-0.2px',
-              transition: 'all 0.15s',
             }}
           >
             {t.label}
@@ -796,71 +591,35 @@ export default function UserProfilePage() {
         ))}
       </div>
 
-      {/* ══ 리뷰 탭 — 메이슨리 2열 ══ */}
+      {/* 리뷰 탭 */}
       {activeTab === 'reviews' && (
         <div style={{ background: '#FAFAFA', minHeight: 200 }}>
           {reviews.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '72px 24px', color: '#999' }}>
               <p style={{ fontSize: 40, marginBottom: 16 }}>📝</p>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 8 }}>
-                아직 작성한 리뷰가 없어요
-              </p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 8 }}>아직 작성한 리뷰가 없어요</p>
               <p style={{ fontSize: 13, lineHeight: 1.65 }}>
                 {isSelf ? '첫 번째 맛집 리뷰를 남겨보세요!' : '이 유저는 아직 리뷰가 없어요'}
               </p>
               {isSelf && (
                 <button
                   onClick={() => router.push('/review/write')}
-                  style={{
-                    marginTop: 24,
-                    padding: '13px 32px',
-                    background: '#111',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 28,
-                    fontWeight: 700,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    letterSpacing: '-0.2px',
-                  }}
+                  style={{ marginTop: 24, padding: '13px 32px', background: '#111', color: '#fff', border: 'none', borderRadius: 28, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
                 >
                   리뷰 작성하기
                 </button>
               )}
             </div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                padding: '14px 12px',
-                alignItems: 'flex-start',
-              }}
-            >
-              {/* 왼쪽 열 */}
+            <div style={{ display: 'flex', gap: 10, padding: '14px 12px', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {leftCol.map((r) => (
-                  <ReviewCard
-                    key={r.id}
-                    review={r}
-                    expanded={expandedReview === r.id}
-                    onToggle={() =>
-                      setExpandedReview(expandedReview === r.id ? null : r.id)
-                    }
-                  />
+                  <ReviewCard key={r.id} review={r} expanded={expandedReview === r.id} onToggle={() => setExpandedReview(expandedReview === r.id ? null : r.id)} />
                 ))}
               </div>
-              {/* 오른쪽 열 */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {rightCol.map((r) => (
-                  <ReviewCard
-                    key={r.id}
-                    review={r}
-                    expanded={expandedReview === r.id}
-                    onToggle={() =>
-                      setExpandedReview(expandedReview === r.id ? null : r.id)
-                    }
-                  />
+                  <ReviewCard key={r.id} review={r} expanded={expandedReview === r.id} onToggle={() => setExpandedReview(expandedReview === r.id ? null : r.id)} />
                 ))}
               </div>
             </div>
@@ -868,58 +627,16 @@ export default function UserProfilePage() {
         </div>
       )}
 
-      {/* ══ 맛 성향 탭 ══ */}
+      {/* 맛 성향 탭 */}
       {activeTab === 'taste' && (
         <div style={{ padding: '24px 20px' }}>
-          {/* 맛 MBTI 카드 */}
           {profile.taste_mbti && (
-            <div
-              style={{
-                background: '#F7F7F7',
-                borderRadius: 16,
-                padding: '18px 20px',
-                marginBottom: 24,
-                border: '1px solid #E8E8E8',
-              }}
-            >
-              <p
-                style={{
-                  fontSize: 11,
-                  color: '#999',
-                  fontWeight: 600,
-                  letterSpacing: '0.3px',
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
-                }}
-              >
-                맛 유형
-              </p>
-              <p
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: '#111',
-                  letterSpacing: '-0.4px',
-                }}
-              >
-                {profile.taste_mbti}
-              </p>
+            <div style={{ background: '#F7F7F7', borderRadius: 16, padding: '18px 20px', marginBottom: 24, border: '1px solid #E8E8E8' }}>
+              <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase', marginBottom: 8 }}>맛 유형</p>
+              <p style={{ fontSize: 18, fontWeight: 800, color: '#111', letterSpacing: '-0.4px' }}>{profile.taste_mbti}</p>
             </div>
           )}
-
-          {/* 맛 성향 바 */}
-          <p
-            style={{
-              fontSize: 11,
-              color: '#999',
-              fontWeight: 600,
-              letterSpacing: '0.3px',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
-            맛 성향 분석
-          </p>
+          <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase', marginBottom: 16 }}>맛 성향 분석</p>
           <TasteBar label="🌶️ 맵기" value={profile.taste_spicy ?? 3} />
           <TasteBar label="🧂 짠기" value={profile.taste_salty ?? 3} />
           <TasteBar label="🍯 단기" value={profile.taste_sweet ?? 3} />
@@ -928,85 +645,32 @@ export default function UserProfilePage() {
         </div>
       )}
 
-      {/* ══ 하단 네비게이션 ══ */}
+      {/* 하단 네비게이션 */}
       <nav
         style={{
-          position: 'fixed',
-          bottom: 0,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '100%',
-          maxWidth: 480,
-          background: '#fff',
-          borderTop: '1px solid #F0F0F0',
-          display: 'flex',
-          alignItems: 'center',
-          height: 60,
-          zIndex: 200,
+          position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+          width: '100%', maxWidth: 480, background: '#fff',
+          borderTop: '1px solid #F0F0F0', display: 'flex', alignItems: 'center', height: 60, zIndex: 200,
         }}
       >
         {navItems.map((item) => (
-          <div
-            key={item.path}
-            style={{
-              flex: 1,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
+          <div key={item.path} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {item.icon === null ? (
               <button
                 onClick={() => router.push('/review/write')}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 14,
-                  background: '#111',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                }}
-                aria-label="리뷰 작성"
+                style={{ width: 42, height: 42, borderRadius: 14, background: '#111', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2.5"
-                >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </button>
             ) : (
               <button
                 onClick={() => router.push(item.path)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 3,
-                  padding: '6px 0',
-                  minWidth: 44,
-                }}
-                aria-label={item.label}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '6px 0', minWidth: 44 }}
               >
                 {item.icon}
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: item.active ? '#111' : '#999',
-                    fontWeight: item.active ? 700 : 400,
-                    letterSpacing: '-0.2px',
-                  }}
-                >
+                <span style={{ fontSize: 10, color: item.active ? '#111' : '#999', fontWeight: item.active ? 700 : 400 }}>
                   {item.label}
                 </span>
               </button>

@@ -4,9 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-/* =========================================================
-   타입 정의
-   ========================================================= */
 interface StoreInfo {
   id: string
   name: string
@@ -20,7 +17,7 @@ interface Review {
   menu_name: string | null
   one_line_review: string | null
   content: string | null
-  total_rating: number | null
+  star_score: number | null
   photos: string | string[] | null
   tags: string[] | null
   store_id: string
@@ -40,9 +37,6 @@ interface UserProfile {
   taste_rich: number | null
 }
 
-/* =========================================================
-   유틸리티
-   ========================================================= */
 const supabase = createClient()
 
 function parsePhotos(photos: string | string[] | null): string[] {
@@ -80,9 +74,6 @@ const TASTE_MBTI_LIST = [
   '☕ 카페 순례자', '🍜 면요리 전도사', '🍱 한식 지킴이', '🌍 세계음식 탐험가',
 ]
 
-/* =========================================================
-   Avatar
-   ========================================================= */
 function Avatar({ name, size = 64 }: { name?: string | null; size?: number }) {
   return (
     <div
@@ -106,9 +97,6 @@ function Avatar({ name, size = 64 }: { name?: string | null; size?: number }) {
   )
 }
 
-/* =========================================================
-   TasteBar — 흑백
-   ========================================================= */
 function TasteBar({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -134,9 +122,6 @@ function TasteBar({ label, value }: { label: string; value: number }) {
   )
 }
 
-/* =========================================================
-   ReviewCard — 핀터레스트 스타일
-   ========================================================= */
 function ReviewCard({
   review,
   expanded,
@@ -163,7 +148,6 @@ function ReviewCard({
         width: '100%',
       }}
     >
-      {/* 사진 */}
       {photo ? (
         <div style={{ position: 'relative', width: '100%', background: '#F0F0F0', overflow: 'hidden' }}>
           <img
@@ -205,9 +189,7 @@ function ReviewCard({
         </div>
       )}
 
-      {/* 본문 */}
       <div style={{ padding: '12px 14px 14px' }}>
-        {/* 가게명 + 날짜 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <p
             style={{
@@ -227,7 +209,6 @@ function ReviewCard({
           </span>
         </div>
 
-        {/* 카테고리 칩 */}
         {review.stores?.category && (
           <span
             style={{
@@ -245,22 +226,21 @@ function ReviewCard({
           </span>
         )}
 
-        {/* 메뉴명 + 별점 */}
+        {/* ✅ total_rating → star_score */}
         {review.menu_name && (
           <p style={{ fontSize: 12, color: '#666', marginBottom: 5, fontWeight: 500 }}>
             {review.menu_name}
-            {review.total_rating != null && (
+            {review.star_score != null && (
               <span style={{ marginLeft: 6, color: '#111', fontWeight: 800 }}>
-                {'★'.repeat(Math.round(review.total_rating))}
+                {'★'.repeat(Math.round(review.star_score))}
                 <span style={{ fontWeight: 400, color: '#999', fontSize: 10 }}>
-                  {' '}{review.total_rating.toFixed(1)}
+                  {' '}{review.star_score.toFixed(1)}
                 </span>
               </span>
             )}
           </p>
         )}
 
-        {/* 한줄 리뷰 */}
         {review.one_line_review && (
           <p
             style={{
@@ -278,7 +258,6 @@ function ReviewCard({
           </p>
         )}
 
-        {/* 상세 내용 (펼쳤을 때) */}
         {expanded && review.content && (
           <p
             style={{
@@ -294,7 +273,6 @@ function ReviewCard({
           </p>
         )}
 
-        {/* 태그 */}
         {expanded && tags.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
             {tags.map((tag) => (
@@ -315,7 +293,6 @@ function ReviewCard({
           </div>
         )}
 
-        {/* 더보기 버튼 */}
         {(review.content || tags.length > 0) && (
           <button
             onClick={onToggle}
@@ -338,9 +315,6 @@ function ReviewCard({
   )
 }
 
-/* =========================================================
-   메인 ProfilePage
-   ========================================================= */
 export default function ProfilePage() {
   const router = useRouter()
 
@@ -371,7 +345,8 @@ export default function ProfilePage() {
         supabase.from('user_taste_profile').select('*').eq('user_id', user.id).maybeSingle(),
         supabase
           .from('reviews')
-          .select('id, created_at, menu_name, one_line_review, content, total_rating, photos, tags, store_id, stores(id, name, category, address)')
+          // ✅ total_rating → star_score
+          .select('id, created_at, menu_name, one_line_review, content, star_score, photos, tags, store_id, stores(id, name, category, address)')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(30),
@@ -428,14 +403,7 @@ export default function ProfilePage() {
         })
         .eq('user_id', profile.user_id)
       setProfile((p) =>
-        p
-          ? {
-              ...p,
-              nickname: editNickname.trim() || p.nickname,
-              bio: editBio.trim(),
-              taste_mbti: editMBTI,
-            }
-          : p
+        p ? { ...p, nickname: editNickname.trim() || p.nickname, bio: editBio.trim(), taste_mbti: editMBTI } : p
       )
       setEditing(false)
     } catch {
@@ -445,11 +413,9 @@ export default function ProfilePage() {
     }
   }
 
-  /* ─── 메이슨리 2열 분배 ─── */
   const leftCol = reviews.filter((_, i) => i % 2 === 0)
   const rightCol = reviews.filter((_, i) => i % 2 === 1)
 
-  /* ─── 로딩 ─── */
   if (loading) {
     return (
       <div
@@ -484,7 +450,6 @@ export default function ProfilePage() {
     )
   }
 
-  /* ─── 네비게이션 아이템 ─── */
   const navItems: { icon: React.ReactNode; label: string; path: string; active: boolean }[] = [
     {
       icon: (
@@ -531,7 +496,6 @@ export default function ProfilePage() {
     },
   ]
 
-  /* ─── 렌더 ─── */
   return (
     <div
       style={{
@@ -549,7 +513,7 @@ export default function ProfilePage() {
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* ══ 헤더 ══ */}
+      {/* 헤더 */}
       <header
         style={{
           position: 'sticky',
@@ -564,16 +528,13 @@ export default function ProfilePage() {
           padding: '0 14px',
         }}
       >
-        {/* 로고 — yum2.png 고정, 클릭 시 /feed */}
         <button
           onClick={() => router.push('/feed')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-          aria-label="YumMap 홈"
         >
           <img src="/yum2.png" alt="YumMap" style={{ height: 28, objectFit: 'contain', display: 'block' }} />
         </button>
 
-        {/* 편집 버튼 */}
         {!editing ? (
           <button
             onClick={() => setEditing(true)}
@@ -586,7 +547,6 @@ export default function ProfilePage() {
               fontWeight: 700,
               color: '#111',
               cursor: 'pointer',
-              letterSpacing: '-0.2px',
             }}
           >
             편집
@@ -629,7 +589,7 @@ export default function ProfilePage() {
         )}
       </header>
 
-      {/* ══ 프로필 영역 ══ */}
+      {/* 프로필 영역 */}
       <div style={{ padding: '28px 20px 24px', borderBottom: '1px solid #F0F0F0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 18 }}>
           <Avatar name={profile?.nickname} size={72} />
@@ -649,19 +609,10 @@ export default function ProfilePage() {
                   outline: 'none',
                   marginBottom: 6,
                   color: '#111',
-                  letterSpacing: '-0.3px',
                 }}
               />
             ) : (
-              <p
-                style={{
-                  fontSize: 20,
-                  fontWeight: 800,
-                  color: '#111',
-                  letterSpacing: '-0.5px',
-                  marginBottom: 5,
-                }}
-              >
+              <p style={{ fontSize: 20, fontWeight: 800, color: '#111', letterSpacing: '-0.5px', marginBottom: 5 }}>
                 {profile?.nickname || '닉네임 없음'}
               </p>
             )}
@@ -683,19 +634,9 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 편집 — 맛 MBTI 선택 */}
         {editing && (
           <div style={{ marginBottom: 14 }}>
-            <p
-              style={{
-                fontSize: 11,
-                color: '#999',
-                fontWeight: 600,
-                letterSpacing: '0.3px',
-                textTransform: 'uppercase',
-                marginBottom: 10,
-              }}
-            >
+            <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase', marginBottom: 10 }}>
               맛 MBTI
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -712,7 +653,6 @@ export default function ProfilePage() {
                     color: editMBTI === m ? '#fff' : '#555',
                     cursor: 'pointer',
                     fontWeight: editMBTI === m ? 700 : 400,
-                    transition: 'all 0.15s',
                   }}
                 >
                   {m}
@@ -722,7 +662,6 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* 자기소개 */}
         {editing ? (
           <textarea
             value={editBio}
@@ -744,28 +683,13 @@ export default function ProfilePage() {
           />
         ) : (
           profile?.bio && (
-            <p
-              style={{
-                fontSize: 13,
-                color: '#555',
-                lineHeight: 1.65,
-                marginBottom: 18,
-              }}
-            >
+            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.65, marginBottom: 18 }}>
               {profile.bio}
             </p>
           )
         )}
 
-        {/* 통계 */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 0,
-            borderTop: '1px solid #F0F0F0',
-            paddingTop: 18,
-          }}
-        >
+        <div style={{ display: 'flex', gap: 0, borderTop: '1px solid #F0F0F0', paddingTop: 18 }}>
           {[
             { label: '리뷰', value: reviews.length },
             { label: '팔로워', value: followerCount },
@@ -773,29 +697,17 @@ export default function ProfilePage() {
           ].map((s, i) => (
             <div
               key={s.label}
-              style={{
-                flex: 1,
-                textAlign: 'center',
-                borderRight: i < 2 ? '1px solid #F0F0F0' : 'none',
-              }}
+              style={{ flex: 1, textAlign: 'center', borderRight: i < 2 ? '1px solid #F0F0F0' : 'none' }}
             >
-              <p style={{ fontSize: 22, fontWeight: 800, color: '#111', letterSpacing: '-0.5px' }}>
-                {s.value}
-              </p>
+              <p style={{ fontSize: 22, fontWeight: 800, color: '#111', letterSpacing: '-0.5px' }}>{s.value}</p>
               <p style={{ fontSize: 11, color: '#999', marginTop: 2, fontWeight: 500 }}>{s.label}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ══ 탭 ══ */}
-      <div
-        style={{
-          display: 'flex',
-          borderBottom: '1px solid #F0F0F0',
-          background: '#fff',
-        }}
-      >
+      {/* 탭 */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #F0F0F0', background: '#fff' }}>
         {([
           { key: 'reviews', label: `리뷰 ${reviews.length}` },
           { key: 'taste', label: '맛 성향' },
@@ -813,8 +725,6 @@ export default function ProfilePage() {
               color: activeTab === t.key ? '#111' : '#999',
               borderBottom: activeTab === t.key ? '2px solid #111' : '2px solid transparent',
               cursor: 'pointer',
-              letterSpacing: '-0.2px',
-              transition: 'all 0.15s',
             }}
           >
             {t.label}
@@ -822,17 +732,13 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      {/* ══ 탭 컨텐츠 ══ */}
-
-      {/* 리뷰 탭 — 메이슨리 2열 */}
+      {/* 리뷰 탭 */}
       {activeTab === 'reviews' && (
         <div style={{ background: '#FAFAFA', minHeight: 200 }}>
           {reviews.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '72px 24px', color: '#999' }}>
               <p style={{ fontSize: 40, marginBottom: 16 }}>📝</p>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 8 }}>
-                아직 작성한 리뷰가 없어요
-              </p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 8 }}>아직 작성한 리뷰가 없어요</p>
               <p style={{ fontSize: 13, lineHeight: 1.65 }}>첫 번째 맛집 리뷰를 남겨보세요!</p>
               <button
                 onClick={() => router.push('/review/write')}
@@ -846,44 +752,30 @@ export default function ProfilePage() {
                   fontWeight: 700,
                   fontSize: 14,
                   cursor: 'pointer',
-                  letterSpacing: '-0.2px',
                 }}
               >
                 리뷰 작성하기
               </button>
             </div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                padding: '14px 12px',
-                alignItems: 'flex-start',
-              }}
-            >
-              {/* 왼쪽 열 */}
+            <div style={{ display: 'flex', gap: 10, padding: '14px 12px', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {leftCol.map((r) => (
                   <ReviewCard
                     key={r.id}
                     review={r}
                     expanded={expandedReview === r.id}
-                    onToggle={() =>
-                      setExpandedReview(expandedReview === r.id ? null : r.id)
-                    }
+                    onToggle={() => setExpandedReview(expandedReview === r.id ? null : r.id)}
                   />
                 ))}
               </div>
-              {/* 오른쪽 열 */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {rightCol.map((r) => (
                   <ReviewCard
                     key={r.id}
                     review={r}
                     expanded={expandedReview === r.id}
-                    onToggle={() =>
-                      setExpandedReview(expandedReview === r.id ? null : r.id)
-                    }
+                    onToggle={() => setExpandedReview(expandedReview === r.id ? null : r.id)}
                   />
                 ))}
               </div>
@@ -895,7 +787,6 @@ export default function ProfilePage() {
       {/* 맛 성향 탭 */}
       {activeTab === 'taste' && profile && (
         <div style={{ padding: '24px 20px' }}>
-          {/* 맛 MBTI 카드 */}
           {profile.taste_mbti && (
             <div
               style={{
@@ -906,16 +797,7 @@ export default function ProfilePage() {
                 border: '1px solid #E8E8E8',
               }}
             >
-              <p
-                style={{
-                  fontSize: 11,
-                  color: '#999',
-                  fontWeight: 600,
-                  letterSpacing: '0.3px',
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
-                }}
-              >
+              <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase', marginBottom: 8 }}>
                 나의 맛 유형
               </p>
               <p style={{ fontSize: 18, fontWeight: 800, color: '#111', letterSpacing: '-0.4px' }}>
@@ -923,18 +805,7 @@ export default function ProfilePage() {
               </p>
             </div>
           )}
-
-          {/* 맛 성향 바 */}
-          <p
-            style={{
-              fontSize: 11,
-              color: '#999',
-              fontWeight: 600,
-              letterSpacing: '0.3px',
-              textTransform: 'uppercase',
-              marginBottom: 16,
-            }}
-          >
+          <p style={{ fontSize: 11, color: '#999', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase', marginBottom: 16 }}>
             맛 성향 분석
           </p>
           <TasteBar label="🌶️ 맵기" value={profile.taste_spicy ?? 3} />
@@ -945,7 +816,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ══ 하단 네비게이션 ══ */}
+      {/* 하단 네비게이션 */}
       <nav
         style={{
           position: 'fixed',
@@ -981,7 +852,6 @@ export default function ProfilePage() {
                   justifyContent: 'center',
                   cursor: 'pointer',
                 }}
-                aria-label="리뷰 작성"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
                   <path d="M12 5v14M5 12h14" />
@@ -1001,17 +871,9 @@ export default function ProfilePage() {
                   padding: '6px 0',
                   minWidth: 44,
                 }}
-                aria-label={item.label}
               >
                 {item.icon}
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: item.active ? '#111' : '#999',
-                    fontWeight: item.active ? 700 : 400,
-                    letterSpacing: '-0.2px',
-                  }}
-                >
+                <span style={{ fontSize: 10, color: item.active ? '#111' : '#999', fontWeight: item.active ? 700 : 400 }}>
                   {item.label}
                 </span>
               </button>
