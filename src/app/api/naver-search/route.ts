@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+function getRegionFromCoords(lat: number, lng: number): string | null {
+  if (lat >= 35.3 && lat <= 35.7 && lng >= 128.9 && lng <= 129.5) return '울산'
+  if (lat >= 35.0 && lat <= 35.3 && lng >= 128.9 && lng <= 129.3) return '부산'
+  if (lat >= 35.7 && lat <= 36.1 && lng >= 128.4 && lng <= 128.9) return '대구'
+  if (lat >= 36.2 && lat <= 36.6 && lng >= 127.2 && lng <= 127.6) return '대전'
+  if (lat >= 35.1 && lat <= 35.3 && lng >= 126.7 && lng <= 127.0) return '광주'
+  if (lat >= 37.4 && lat <= 37.7 && lng >= 126.8 && lng <= 127.2) return '서울'
+  if (lat >= 37.3 && lat <= 37.5 && lng >= 126.6 && lng <= 127.0) return '인천'
+  if (lat >= 37.2 && lat <= 37.5 && lng >= 126.9 && lng <= 127.4) return '수원'
+  if (lat >= 36.6 && lat <= 37.0 && lng >= 127.3 && lng <= 127.7) return '청주'
+  if (lat >= 37.7 && lat <= 38.1 && lng >= 127.0 && lng <= 127.5) return '춘천'
+  if (lat >= 37.4 && lat <= 37.8 && lng >= 127.9 && lng <= 128.4) return '원주'
+  if (lat >= 35.8 && lat <= 36.2 && lng >= 129.1 && lng <= 129.6) return '포항'
+  if (lat >= 35.8 && lat <= 36.1 && lng >= 128.5 && lng <= 128.9) return '경주'
+  if (lat >= 34.8 && lat <= 35.1 && lng >= 126.3 && lng <= 126.7) return '목포'
+  if (lat >= 34.9 && lat <= 35.2 && lng >= 127.4 && lng <= 127.8) return '순천'
+  return null
+}
+
 function normalizeCategory(category: string | null): string | null {
   if (!category) return null
   const c = category.toLowerCase()
@@ -56,9 +75,21 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // display=20으로 늘려서 더 많은 결과 가져오기
+    // ✅ 위치 기반 지역명 자동 추가
+    let searchQuery = query
+    if (lat && lng) {
+      const userLat = parseFloat(lat)
+      const userLng = parseFloat(lng)
+      const region = getRegionFromCoords(userLat, userLng)
+      if (region && !query.includes(region)) {
+        searchQuery = `${region} ${query}`
+      }
+    }
+
+    console.log('🔍 최종 검색어:', searchQuery)
+
     const res = await fetch(
-      `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=20&sort=comment`,
+      `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(searchQuery)}&display=20&sort=random`,
       {
         headers: {
           'X-Naver-Client-Id': clientId,
@@ -88,11 +119,11 @@ export async function GET(req: NextRequest) {
       category: normalizeCategory(item.category),
       address: item.roadAddress || item.address || null,
       phone: item.telephone || null,
-      latitude: item.mapy ? parseFloat(item.mapy) : null,
-      longitude: item.mapx ? parseFloat(item.mapx) : null,
+      latitude: item.mapy ? parseFloat(item.mapy) / 1e7 : null,
+      longitude: item.mapx ? parseFloat(item.mapx) / 1e7 : null,
     }))
 
-    // 위치 기반 정렬 (lat, lng 파라미터가 있을 때)
+    // ✅ 위치 기반 거리 정렬
     if (lat && lng) {
       const userLat = parseFloat(lat)
       const userLng = parseFloat(lng)
